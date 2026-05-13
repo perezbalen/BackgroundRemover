@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from PIL import Image
 
-from background_remover.mask_cleanup import MaskCleanupOptions, apply_mask_cleanup
+from background_remover.mask_cleanup import MaskCleanupOptions, apply_alpha_mask, apply_mask_cleanup
 
 
 def _mask(width: int, height: int, values: list[int]) -> Image.Image:
     image = Image.new("L", (width, height))
+    image.putdata(values)
+    return image
+
+
+def _rgba(width: int, height: int, values: list[tuple[int, int, int, int]]) -> Image.Image:
+    image = Image.new("RGBA", (width, height))
     image.putdata(values)
     return image
 
@@ -172,3 +178,20 @@ def test_disabled_cleanup_returns_raw_alpha() -> None:
     )
 
     assert _values(result) == [0, 10, 120, 255]
+
+
+def test_apply_alpha_mask_bleeds_foreground_rgb_into_soft_edge_pixels() -> None:
+    image = _rgba(
+        3,
+        1,
+        [
+            (180, 40, 20, 255),
+            (255, 247, 237, 64),
+            (255, 247, 237, 0),
+        ],
+    )
+    mask = _mask(3, 1, [255, 64, 0])
+
+    result = apply_alpha_mask(image, mask)
+
+    assert result.getpixel((1, 0)) == (180, 40, 20, 64)

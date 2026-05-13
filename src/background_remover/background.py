@@ -138,6 +138,13 @@ def clean_removal_result(
     cleanup_options: MaskCleanupOptions | None = None,
 ) -> RemovalResult:
     options = cleanup_options or MaskCleanupOptions()
+    if not options.enabled:
+        return RemovalResult(
+            image=result.image.copy(),
+            mask=result.mask.convert("L").copy(),
+            elapsed_seconds=result.elapsed_seconds,
+        )
+
     try:
         cleaned_mask = apply_mask_cleanup(result.mask, options)
     except ValueError as error:

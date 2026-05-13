@@ -423,7 +423,10 @@ def _process_aseprite(
             raise BackgroundRemovalError(str(error)) from error
 
         final_mask = color_key_result.combined_mask if color_key_result else cleaned_mask
-        processed = apply_alpha_mask(result.image, final_mask)
+        if not cleanup_options.enabled and color_key_result is None:
+            processed = result.image.convert("RGBA")
+        else:
+            processed = apply_alpha_mask(result.image, final_mask)
         processed_frames.append(processed.tobytes())
         original_images.append(image.copy())
         mask_images.append(final_mask.copy())
@@ -645,7 +648,7 @@ def _add_mask_cleanup_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--fill-hole-size",
         type=int,
-        default=4,
+        default=0,
         help="Fill enclosed transparent holes up to this many pixels. Use 0 to disable.",
     )
     parser.add_argument(

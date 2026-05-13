@@ -66,8 +66,42 @@ def apply_alpha_mask(image, mask):
     """Return an RGBA copy of image with mask as the alpha channel."""
 
     rgba = image.convert("RGBA")
-    rgba.putalpha(mask.convert("L"))
+    source_alpha = rgba.getchannel("A")
+    alpha = mask.convert("L")
+    rgba.putalpha(alpha)
+    _bleed_foreground_rgb_into_soft_alpha(rgba, source_alpha)
     return rgba
+
+
+def _bleed_foreground_rgb_into_soft_alpha(image, alpha, source_threshold: int = 224) -> None:
+    width, height = image.size
+    alpha_values = list(alpha.tobytes())
+    pixels = bytearray(image.tobytes())
+    visited = [False] * len(alpha_values)
+    queue: deque[int] = deque()
+
+    for index, value in enumerate(alpha_values):
+        if value >= source_threshold:
+            visited[index] = True
+            queue.append(index)
+
+    if not queue:
+        return
+
+    while queue:
+        source_index = queue.popleft()
+        source_offset = source_index * 4
+        for neighbor in _neighbors(source_index, width, height):
+            if visited[neighbor]:
+                continue
+            visited[neighbor] = True
+            neighbor_offset = neighbor * 4
+            pixels[neighbor_offset : neighbor_offset + 3] = pixels[
+                source_offset : source_offset + 3
+            ]
+            queue.append(neighbor)
+
+    image.frombytes(bytes(pixels))
 
 
 def _validate_options(options: MaskCleanupOptions) -> None:
