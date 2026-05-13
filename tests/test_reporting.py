@@ -66,6 +66,8 @@ def test_build_and_write_processing_report(tmp_path) -> None:
         model_name="u2netp",
         cleanup="disabled",
         color_key="disabled",
+        layer_policy="flattened processed layer",
+        metadata_policy={"frame_duration": "preserved"},
         width=2,
         height=2,
         durations_ms=[83],
@@ -78,6 +80,8 @@ def test_build_and_write_processing_report(tmp_path) -> None:
 
     saved = json.loads(report_path.read_text(encoding="utf-8"))
     assert saved["frames"] == 1
+    assert saved["layer_policy"] == "flattened processed layer"
+    assert saved["metadata_policy"]["frame_duration"] == "preserved"
     assert saved["frame_metrics"][0]["coverage"] == 0.25
     assert saved["warnings"] == []
 

@@ -57,7 +57,13 @@ class RembgBackgroundRemover:
         self.model_cache_dir = Path(model_cache_dir or ".cache/rembg-models")
         self.model_cache_dir.mkdir(parents=True, exist_ok=True)
         os.environ["U2NET_HOME"] = str(self.model_cache_dir.resolve())
-        self.session = new_session(model_name, providers=["CPUExecutionProvider"])
+        try:
+            self.session = new_session(model_name, providers=["CPUExecutionProvider"])
+        except Exception as error:
+            raise BackgroundRemovalError(
+                f"Failed to load or download model '{model_name}' in "
+                f"{self.model_cache_dir}. Check network access or cached model files."
+            ) from error
 
     def remove(self, image: "PILImage") -> RemovalResult:
         try:

@@ -87,25 +87,25 @@ This plan turns the PRD into implementation phases for a CPU-first CLI app. Task
 
 ## Phase 7: Metadata And Layer Policy
 
-- [ ] Decide the default output layer policy: flattened processed layer or original layer preservation.
-- [ ] Preserve animation tags if supported by the chosen write path.
-- [ ] Preserve slices if supported by the chosen write path.
-- [ ] Preserve layer names where feasible.
-- [ ] Add a warning when the tool flattens layers.
-- [ ] Add documentation explaining what metadata is preserved.
-- [ ] Add regression checks for frame count, duration, and tags.
+- [x] Decide the default output layer policy: flattened processed layer or original layer preservation.
+- [x] Preserve animation tags if supported by the chosen write path.
+- [x] Preserve slices if supported by the chosen write path.
+- [x] Preserve layer names where feasible.
+- [x] Add a warning when the tool flattens layers.
+- [x] Add documentation explaining what metadata is preserved.
+- [x] Add regression checks for frame count, duration, and tags.
 
 ## Phase 8: CLI Usability
 
-- [ ] Add `--dry-run` to inspect input metadata without processing.
-- [ ] Add `--list-models`.
-- [ ] Add `--model-cache-dir`.
-- [ ] Add `--overwrite` protection for output files.
-- [ ] Add clear error messages for missing input files.
-- [ ] Add clear error messages for unsupported `.aseprite` features.
-- [ ] Add clear error messages for missing model files or failed downloads.
-- [ ] Add logging verbosity options.
-- [ ] Add examples to the README.
+- [x] Add `--dry-run` to inspect input metadata without processing.
+- [x] Add `--list-models`.
+- [x] Add `--model-cache-dir`.
+- [x] Add `--overwrite` protection for output files.
+- [x] Add clear error messages for missing input files.
+- [x] Add clear error messages for unsupported `.aseprite` features.
+- [x] Add clear error messages for missing model files or failed downloads.
+- [x] Add logging verbosity options.
+- [x] Add examples to the README.
 
 ## Phase 9: Testing And Validation
 

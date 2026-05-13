@@ -9,6 +9,8 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+output/
+
 
 # Virtual environments
 .venv/
