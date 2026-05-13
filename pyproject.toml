@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aseprite-background-remover"
+version = "0.1.0"
+description = "CPU-first CLI for removing backgrounds from animated Aseprite sprites."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [
+  { name = "perezbalen" }
+]
+dependencies = [
+  "pillow>=10.0",
+  "rembg[cpu]>=2.0.75"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.5"
+]
+
+[project.scripts]
+background-remover = "background_remover.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

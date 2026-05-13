@@ -1,0 +1,18 @@
+{
+  "folders": [
+    {
+      "name": "BackgroundRemover",
+      "uri": "vscode-remote://wsl+Ubuntu/mnt/e/Repos/perezbalen/BackgroundRemover"
+    }
+  ],
+  "remoteAuthority": "wsl+Ubuntu",
+  "settings": {
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.cwd": "/mnt/e/Repos/perezbalen/BackgroundRemover"
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-vscode-remote.remote-wsl"
+    ]
+  }
+}

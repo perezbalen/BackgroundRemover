@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Model and tool caches
+.cache/
+.models/
+models/
+rembg-session-cache/
+
+# Generated app output
+output/
+outputs/
+generated/
+exports/
+frames/
+masks/
+reports/
+*.processed.aseprite
+*.processed.png
+
+# Local environment
+.env
+.env.*
+
