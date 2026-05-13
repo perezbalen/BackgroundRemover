@@ -22,6 +22,12 @@ List supported models:
 background-remover --list-models
 ```
 
+The expanded model set is still CPU-first through `rembg[cpu]`. It includes
+the original fast candidates plus stronger rembg models that overlap with the
+models reviewed in `bgbye`, such as `bria-rmbg`, `u2net`, and
+`u2net_human_seg`. Larger BiRefNet models may be slow on CPU, so benchmark a
+small subset before processing a full animation.
+
 Inspect an Aseprite file without processing:
 
 ```bash
@@ -31,7 +37,7 @@ background-remover inspect images/sprite.aseprite
 Preview a full processing run without loading a model:
 
 ```bash
-background-remover process images/sprite.aseprite output/sprite.processed.aseprite --dry-run --model u2netp
+background-remover process images/sprite.aseprite output/sprite.processed.aseprite --dry-run
 ```
 
 Run the Phase 2 still-image smoke test:
@@ -43,11 +49,18 @@ background-remover remove-image images/susan.png output/susan.png \
   --overwrite
 ```
 
+Compare stronger CPU candidates on a still image:
+
+```bash
+background-remover benchmark-image images/susan.png output/model-benchmark \
+  --models bria-rmbg birefnet-general-lite u2net u2net_human_seg isnet-anime \
+  --overwrite
+```
+
 Process an animated sprite and export review artifacts:
 
 ```bash
 background-remover process images/sprite.aseprite output/sprite.processed.aseprite \
-  --model u2netp \
   --mask-output-dir output/sprite-masks \
   --report-output output/sprite.report.json \
   --contact-sheet-output output/sprite.contact.png \
@@ -59,7 +72,7 @@ Full `process` example with every current flag:
 
 ```bash
 background-remover process images/sprite.aseprite output/sprite.full.aseprite \
-  --model u2netp \
+  --model isnet-anime \
   --frame-output-dir output/full/frames \
   --mask-output-dir output/full/combined-masks \
   --ai-mask-output-dir output/full/ai-masks \

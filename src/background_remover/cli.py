@@ -29,6 +29,7 @@ from background_remover.reporting import (
     write_processing_report,
 )
 
+DEFAULT_MODEL = "bria-rmbg"
 LAYER_POLICY = "flattened processed layer"
 OUTPUT_LAYER_NAME = "Flattened"
 METADATA_POLICY = {
@@ -85,8 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
     process_parser.add_argument(
         "--model",
         choices=SUPPORTED_MODELS,
-        default="isnet-anime",
-        help="Background-removal model to use.",
+        default=DEFAULT_MODEL,
+        help=f"Background-removal model to use. Defaults to {DEFAULT_MODEL}.",
     )
     process_parser.add_argument(
         "--frame-output-dir",
@@ -152,8 +153,8 @@ def build_parser() -> argparse.ArgumentParser:
     remove_image_parser.add_argument(
         "--model",
         choices=SUPPORTED_MODELS,
-        default="isnet-anime",
-        help="Background-removal model to use.",
+        default=DEFAULT_MODEL,
+        help=f"Background-removal model to use. Defaults to {DEFAULT_MODEL}.",
     )
     remove_image_parser.add_argument(
         "--mask-output",
@@ -261,7 +262,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _list_models() -> int:
     for model_name in SUPPORTED_MODELS:
-        print(model_name)
+        suffix = " (default)" if model_name == DEFAULT_MODEL else ""
+        print(f"{model_name}{suffix}")
     return 0
 
 

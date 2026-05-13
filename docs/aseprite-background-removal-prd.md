@@ -80,11 +80,15 @@ Initial model candidates:
 
 - `isnet-anime`: likely useful for stylized or anime-like sprites.
 - `birefnet-general-lite`: likely useful for general video-derived sprites with better quality than older lightweight models.
+- `birefnet-general`, `birefnet-portrait`, `birefnet-dis`, `birefnet-hrsod`, `birefnet-cod`, and `birefnet-massive`: stronger BiRefNet candidates available through `rembg[cpu]`; benchmark selectively because CPU runtime and model size may be high.
+- `bria-rmbg`: a strong background-removal candidate available through `rembg[cpu]`; check the upstream model license before commercial use.
+- `u2net`: general U2Net baseline and direct `bgbye` overlap.
+- `u2net_human_seg`: human-segmentation candidate and direct `bgbye` overlap.
 - `silueta`: lightweight fallback for speed.
 - `u2netp`: lightweight fallback for speed and compatibility.
 - `isnet-general-use`: useful general-purpose quality baseline.
 
-Avoid using BRIA RMBG as the default because its model license is non-commercial unless a commercial license is obtained.
+Avoid using BRIA RMBG as the default because its model license may require additional review before commercial use.
 
 Consider ORMBG later because it is Apache-2.0, but it is optimized for humans and may not generalize to all sprite subjects.
 

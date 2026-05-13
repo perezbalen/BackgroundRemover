@@ -30,6 +30,7 @@ This plan turns the PRD into implementation phases for a CPU-first CLI app. Task
 - [x] Add CPU-only background-removal dependencies.
 - [x] Implement a model-session factory that reuses one session per CLI run.
 - [x] Add support for the initial model list: `isnet-anime`, `birefnet-general-lite`, `isnet-general-use`, `u2netp`, and `silueta`.
+- [x] Expand CPU model candidates after reviewing `bgbye`: `bria-rmbg`, `birefnet-general`, `birefnet-portrait`, `birefnet-dis`, `birefnet-hrsod`, `birefnet-cod`, `birefnet-massive`, `u2net`, and `u2net_human_seg`.
 - [x] Implement background removal for one PIL image.
 - [x] Implement output of an RGBA image with transparent background.
 - [x] Add a command or option to test one still image, using `images/susan.png`.

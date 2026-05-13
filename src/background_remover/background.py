@@ -19,9 +19,18 @@ if TYPE_CHECKING:
 
 SUPPORTED_MODELS = (
     "isnet-anime",
-    "birefnet-general-lite",
     "isnet-general-use",
+    "bria-rmbg",
+    "birefnet-general-lite",
+    "birefnet-general",
+    "birefnet-portrait",
+    "birefnet-dis",
+    "birefnet-hrsod",
+    "birefnet-cod",
+    "birefnet-massive",
+    "u2net",
     "u2netp",
+    "u2net_human_seg",
     "silueta",
 )
 
