@@ -16,6 +16,12 @@ from background_remover.aseprite import (
 )
 from background_remover.background import SUPPORTED_MODELS, BackgroundRemovalError
 from background_remover.mask_cleanup import MaskCleanupOptions, apply_alpha_mask, apply_mask_cleanup
+from background_remover.reporting import (
+    build_processing_report,
+    write_contact_sheet,
+    write_gif_preview,
+    write_processing_report,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,6 +74,30 @@ def build_parser() -> argparse.ArgumentParser:
         "--model-cache-dir",
         default=".cache/rembg-models",
         help="Directory for downloaded rembg model files.",
+    )
+    process_parser.add_argument(
+        "--report-output",
+        help="Optional path for a JSON report with per-frame mask metrics.",
+    )
+    process_parser.add_argument(
+        "--contact-sheet-output",
+        help="Optional path for a PNG contact sheet showing original, mask, and result frames.",
+    )
+    process_parser.add_argument(
+        "--preview-output",
+        help="Optional path for an animated GIF preview of processed frames.",
+    )
+    process_parser.add_argument(
+        "--area-jump-threshold",
+        type=float,
+        default=0.25,
+        help="Warn when neighboring frame mask area changes by more than this ratio.",
+    )
+    process_parser.add_argument(
+        "--bbox-jump-threshold",
+        type=float,
+        default=32.0,
+        help="Warn when neighboring bounding-box centers move by more than this many pixels.",
     )
     _add_mask_cleanup_arguments(process_parser)
 
@@ -138,6 +168,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.mask_output_dir,
                 args.model_cache_dir,
                 _cleanup_options_from_args(args),
+                args.report_output,
+                args.contact_sheet_output,
+                args.preview_output,
+                args.area_jump_threshold,
+                args.bbox_jump_threshold,
             )
         if args.command == "remove-image":
             return _remove_image(
@@ -209,6 +244,11 @@ def _process_aseprite(
     mask_output_dir: str | None,
     model_cache_dir: str,
     cleanup_options: MaskCleanupOptions,
+    report_output_path: str | None,
+    contact_sheet_output_path: str | None,
+    preview_output_path: str | None,
+    area_jump_threshold: float,
+    bbox_jump_threshold: float,
 ) -> int:
     try:
         from PIL import Image
@@ -233,6 +273,9 @@ def _process_aseprite(
 
     remover = RembgBackgroundRemover(model_name, model_cache_dir=model_cache_dir)
     processed_frames: list[bytes] = []
+    original_images = []
+    mask_images = []
+    processed_images = []
     processing_elapsed = 0.0
     frame_count = len(source_frames)
 
@@ -252,6 +295,9 @@ def _process_aseprite(
 
         processed = apply_alpha_mask(result.image, cleaned_mask)
         processed_frames.append(processed.tobytes())
+        original_images.append(image.copy())
+        mask_images.append(cleaned_mask.copy())
+        processed_images.append(processed.copy())
         processing_elapsed += result.elapsed_seconds
 
         frame_name = f"frame-{index:04d}.png"
@@ -278,14 +324,47 @@ def _process_aseprite(
 
     total_elapsed = time.perf_counter() - total_started
     average_elapsed = processing_elapsed / frame_count if frame_count else 0.0
+    cleanup_description = _describe_cleanup(cleanup_options)
+    report = build_processing_report(
+        input_path=input_path,
+        output_path=str(output),
+        model_name=model_name,
+        cleanup=cleanup_description,
+        width=sprite.width,
+        height=sprite.height,
+        durations_ms=durations,
+        masks=mask_images,
+        processing_seconds=processing_elapsed,
+        total_seconds=total_elapsed,
+        area_jump_threshold=area_jump_threshold,
+        bbox_jump_threshold=bbox_jump_threshold,
+    )
+
+    if report_output_path:
+        write_processing_report(report_output_path, report)
+    if contact_sheet_output_path:
+        write_contact_sheet(contact_sheet_output_path, original_images, mask_images, processed_images)
+    if preview_output_path:
+        write_gif_preview(preview_output_path, processed_images, durations)
+
+    for warning in report["warnings"]:
+        print(f"warning: {warning['message']}")
+
     print(f"Wrote {output}")
     if frame_output:
         print(f"Wrote processed frames to {frame_output}")
     if mask_output:
         print(f"Wrote masks to {mask_output}")
+    if report_output_path:
+        print(f"Wrote report to {report_output_path}")
+    if contact_sheet_output_path:
+        print(f"Wrote contact sheet to {contact_sheet_output_path}")
+    if preview_output_path:
+        print(f"Wrote preview to {preview_output_path}")
     print(f"Model: {model_name}")
     print(f"Model cache: {model_cache_dir}")
-    print(f"Cleanup: {_describe_cleanup(cleanup_options)}")
+    print(f"Cleanup: {cleanup_description}")
+    print(f"Temporal warnings: {len(report['warnings'])}")
     print(f"Frames: {frame_count}")
     print(f"Canvas: {sprite.width}x{sprite.height}")
     print(f"Processing time: {processing_elapsed:.2f}s")

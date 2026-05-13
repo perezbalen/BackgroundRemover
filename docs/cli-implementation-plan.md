@@ -66,14 +66,14 @@ This plan turns the PRD into implementation phases for a CPU-first CLI app. Task
 
 ## Phase 5: Temporal Consistency Checks
 
-- [ ] Compute per-frame alpha-mask difference metrics.
-- [ ] Detect sudden mask area jumps between neighboring frames.
-- [ ] Detect sudden bounding-box jumps between neighboring frames.
-- [ ] Add warnings for likely flicker points.
-- [ ] Export a JSON processing report with frame metrics.
-- [ ] Add a contact sheet export showing original frame, mask, and result.
-- [ ] Add a short animated preview export, such as GIF or PNG sequence, if practical.
-- [ ] Document known cases where manual cleanup is still expected.
+- [x] Compute per-frame alpha-mask difference metrics.
+- [x] Detect sudden mask area jumps between neighboring frames.
+- [x] Detect sudden bounding-box jumps between neighboring frames.
+- [x] Add warnings for likely flicker points.
+- [x] Export a JSON processing report with frame metrics.
+- [x] Add a contact sheet export showing original frame, mask, and result.
+- [x] Add a short animated preview export, such as GIF or PNG sequence, if practical.
+- [x] Document known cases where manual cleanup is still expected.
 
 ## Phase 6: Color-Key Assisted Removal
 
