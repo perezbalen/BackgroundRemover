@@ -77,13 +77,13 @@ This plan turns the PRD into implementation phases for a CPU-first CLI app. Task
 
 ## Phase 6: Color-Key Assisted Removal
 
-- [ ] Add optional background color sampling from corners or user-provided color.
-- [ ] Add tolerance controls for near-white or near-solid backgrounds.
-- [ ] Combine color-key masks with AI masks.
-- [ ] Protect foreground pixels from color-key removal when AI confidence is high.
-- [ ] Add preview/debug output for AI mask, color-key mask, and combined mask.
-- [ ] Test on frames with white or near-solid backgrounds.
-- [ ] Decide whether color-key assistance should be opt-in or automatic.
+- [x] Add optional background color sampling from corners or user-provided color.
+- [x] Add tolerance controls for near-white or near-solid backgrounds.
+- [x] Combine color-key masks with AI masks.
+- [x] Protect foreground pixels from color-key removal when AI confidence is high.
+- [x] Add preview/debug output for AI mask, color-key mask, and combined mask.
+- [x] Test on frames with white or near-solid backgrounds.
+- [x] Decide whether color-key assistance should be opt-in or automatic.
 
 ## Phase 7: Metadata And Layer Policy
 

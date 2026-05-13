@@ -15,6 +15,12 @@ from background_remover.aseprite import (
     write_flattened_aseprite,
 )
 from background_remover.background import SUPPORTED_MODELS, BackgroundRemovalError
+from background_remover.color_key import (
+    ColorKeyOptions,
+    apply_color_key_assist,
+    describe_color_key_options,
+    parse_rgb_color,
+)
 from background_remover.mask_cleanup import MaskCleanupOptions, apply_alpha_mask, apply_mask_cleanup
 from background_remover.reporting import (
     build_processing_report,
@@ -68,7 +74,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     process_parser.add_argument(
         "--mask-output-dir",
-        help="Optional directory for raw alpha mask PNGs.",
+        help="Optional directory for final combined alpha mask PNGs.",
+    )
+    process_parser.add_argument(
+        "--ai-mask-output-dir",
+        help="Optional directory for cleaned AI alpha mask PNGs before color-key assist.",
+    )
+    process_parser.add_argument(
+        "--color-key-mask-output-dir",
+        help="Optional directory for color-key foreground mask PNGs.",
     )
     process_parser.add_argument(
         "--model-cache-dir",
@@ -100,6 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Warn when neighboring bounding-box centers move by more than this many pixels.",
     )
     _add_mask_cleanup_arguments(process_parser)
+    _add_color_key_arguments(process_parser)
 
     remove_image_parser = subparsers.add_parser(
         "remove-image",
@@ -166,8 +181,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.model,
                 args.frame_output_dir,
                 args.mask_output_dir,
+                args.ai_mask_output_dir,
+                args.color_key_mask_output_dir,
                 args.model_cache_dir,
                 _cleanup_options_from_args(args),
+                _color_key_options_from_args(args),
                 args.report_output,
                 args.contact_sheet_output,
                 args.preview_output,
@@ -242,8 +260,11 @@ def _process_aseprite(
     model_name: str,
     frame_output_dir: str | None,
     mask_output_dir: str | None,
+    ai_mask_output_dir: str | None,
+    color_key_mask_output_dir: str | None,
     model_cache_dir: str,
     cleanup_options: MaskCleanupOptions,
+    color_key_options: ColorKeyOptions,
     report_output_path: str | None,
     contact_sheet_output_path: str | None,
     preview_output_path: str | None,
@@ -266,10 +287,16 @@ def _process_aseprite(
 
     frame_output = Path(frame_output_dir) if frame_output_dir else None
     mask_output = Path(mask_output_dir) if mask_output_dir else None
+    ai_mask_output = Path(ai_mask_output_dir) if ai_mask_output_dir else None
+    color_key_mask_output = Path(color_key_mask_output_dir) if color_key_mask_output_dir else None
     if frame_output:
         frame_output.mkdir(parents=True, exist_ok=True)
     if mask_output:
         mask_output.mkdir(parents=True, exist_ok=True)
+    if ai_mask_output:
+        ai_mask_output.mkdir(parents=True, exist_ok=True)
+    if color_key_mask_output:
+        color_key_mask_output.mkdir(parents=True, exist_ok=True)
 
     remover = RembgBackgroundRemover(model_name, model_cache_dir=model_cache_dir)
     processed_frames: list[bytes] = []
@@ -290,13 +317,15 @@ def _process_aseprite(
 
         try:
             cleaned_mask = apply_mask_cleanup(result.mask, cleanup_options)
+            color_key_result = apply_color_key_assist(image, cleaned_mask, color_key_options)
         except ValueError as error:
             raise BackgroundRemovalError(str(error)) from error
 
-        processed = apply_alpha_mask(result.image, cleaned_mask)
+        final_mask = color_key_result.combined_mask if color_key_result else cleaned_mask
+        processed = apply_alpha_mask(result.image, final_mask)
         processed_frames.append(processed.tobytes())
         original_images.append(image.copy())
-        mask_images.append(cleaned_mask.copy())
+        mask_images.append(final_mask.copy())
         processed_images.append(processed.copy())
         processing_elapsed += result.elapsed_seconds
 
@@ -304,7 +333,11 @@ def _process_aseprite(
         if frame_output:
             processed.save(frame_output / frame_name)
         if mask_output:
-            cleaned_mask.save(mask_output / frame_name)
+            final_mask.save(mask_output / frame_name)
+        if ai_mask_output:
+            cleaned_mask.save(ai_mask_output / frame_name)
+        if color_key_mask_output and color_key_result:
+            color_key_result.color_key_mask.save(color_key_mask_output / frame_name)
 
         print(
             f"Processed frame {index + 1}/{frame_count} "
@@ -325,11 +358,13 @@ def _process_aseprite(
     total_elapsed = time.perf_counter() - total_started
     average_elapsed = processing_elapsed / frame_count if frame_count else 0.0
     cleanup_description = _describe_cleanup(cleanup_options)
+    color_key_description = describe_color_key_options(color_key_options)
     report = build_processing_report(
         input_path=input_path,
         output_path=str(output),
         model_name=model_name,
         cleanup=cleanup_description,
+        color_key=color_key_description,
         width=sprite.width,
         height=sprite.height,
         durations_ms=durations,
@@ -355,6 +390,10 @@ def _process_aseprite(
         print(f"Wrote processed frames to {frame_output}")
     if mask_output:
         print(f"Wrote masks to {mask_output}")
+    if ai_mask_output:
+        print(f"Wrote AI masks to {ai_mask_output}")
+    if color_key_mask_output:
+        print(f"Wrote color-key masks to {color_key_mask_output}")
     if report_output_path:
         print(f"Wrote report to {report_output_path}")
     if contact_sheet_output_path:
@@ -364,6 +403,7 @@ def _process_aseprite(
     print(f"Model: {model_name}")
     print(f"Model cache: {model_cache_dir}")
     print(f"Cleanup: {cleanup_description}")
+    print(f"Color key: {color_key_description}")
     print(f"Temporal warnings: {len(report['warnings'])}")
     print(f"Frames: {frame_count}")
     print(f"Canvas: {sprite.width}x{sprite.height}")
@@ -454,6 +494,30 @@ def _add_mask_cleanup_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_color_key_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--color-key-sample-corners",
+        action="store_true",
+        help="Enable color-key assist by sampling the background color from frame corners.",
+    )
+    parser.add_argument(
+        "--color-key-color",
+        help="Enable color-key assist with a user-provided background color, as '#RRGGBB' or 'R,G,B'.",
+    )
+    parser.add_argument(
+        "--color-key-tolerance",
+        type=float,
+        default=24.0,
+        help="RGB distance tolerance for near-solid background removal.",
+    )
+    parser.add_argument(
+        "--color-key-protect-alpha",
+        type=int,
+        default=224,
+        help="Keep pixels whose AI alpha is at least this value, even if color-key matches.",
+    )
+
+
 def _cleanup_options_from_args(args: argparse.Namespace) -> MaskCleanupOptions:
     return MaskCleanupOptions(
         enabled=not args.no_cleanup,
@@ -462,6 +526,23 @@ def _cleanup_options_from_args(args: argparse.Namespace) -> MaskCleanupOptions:
         fill_hole_size=args.fill_hole_size,
         keep_largest_component=args.keep_largest_component,
         feather_radius=args.feather_radius,
+    )
+
+
+def _color_key_options_from_args(args: argparse.Namespace) -> ColorKeyOptions:
+    color = None
+    if args.color_key_color:
+        try:
+            color = parse_rgb_color(args.color_key_color)
+        except ValueError as error:
+            raise BackgroundRemovalError(str(error)) from error
+
+    return ColorKeyOptions(
+        enabled=args.color_key_sample_corners or color is not None,
+        sample_corners=args.color_key_sample_corners and color is None,
+        color=color,
+        tolerance=args.color_key_tolerance,
+        protect_alpha=args.color_key_protect_alpha,
     )
 
 

@@ -65,6 +65,7 @@ def test_build_and_write_processing_report(tmp_path) -> None:
         output_path="output.aseprite",
         model_name="u2netp",
         cleanup="disabled",
+        color_key="disabled",
         width=2,
         height=2,
         durations_ms=[83],
