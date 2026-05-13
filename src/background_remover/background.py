@@ -8,6 +8,12 @@ from pathlib import Path
 import time
 from typing import TYPE_CHECKING
 
+from background_remover.mask_cleanup import (
+    MaskCleanupOptions,
+    apply_alpha_mask,
+    apply_mask_cleanup,
+)
+
 if TYPE_CHECKING:
     from PIL.Image import Image as PILImage
 
@@ -85,6 +91,7 @@ def remove_image_file(
     model_name: str,
     mask_output_path: str | None = None,
     model_cache_dir: str | None = None,
+    cleanup_options: MaskCleanupOptions | None = None,
 ) -> RemovalResult:
     try:
         from PIL import Image
@@ -97,6 +104,8 @@ def remove_image_file(
     with Image.open(input_path) as image:
         result = remover.remove(image)
 
+    result = clean_removal_result(result, cleanup_options)
+
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     result.image.save(output)
@@ -107,6 +116,23 @@ def remove_image_file(
         result.mask.save(mask_output)
 
     return result
+
+
+def clean_removal_result(
+    result: RemovalResult,
+    cleanup_options: MaskCleanupOptions | None = None,
+) -> RemovalResult:
+    options = cleanup_options or MaskCleanupOptions()
+    try:
+        cleaned_mask = apply_mask_cleanup(result.mask, options)
+    except ValueError as error:
+        raise BackgroundRemovalError(str(error)) from error
+
+    return RemovalResult(
+        image=apply_alpha_mask(result.image, cleaned_mask),
+        mask=cleaned_mask,
+        elapsed_seconds=result.elapsed_seconds,
+    )
 
 
 def benchmark_image_file(

@@ -39,30 +39,30 @@ This plan turns the PRD into implementation phases for a CPU-first CLI app. Task
 
 ## Phase 3: First End-To-End Aseprite CLI
 
-- [ ] Add CLI arguments for input `.aseprite`, output `.aseprite`, and model name.
-- [ ] Add CLI arguments for optional processed-frame export directory.
-- [ ] Add CLI arguments for optional mask export directory.
-- [ ] Process all exported frames with one reused model session.
-- [ ] Rebuild the processed frames into a new `.aseprite` file.
-- [ ] Preserve canvas size.
-- [ ] Preserve frame order.
-- [ ] Preserve frame duration.
-- [ ] Print progress for each processed frame.
-- [ ] Print total runtime and average runtime per frame.
-- [ ] Run the command against `images/sprite.aseprite`.
-- [ ] Verify the output opens in Aseprite.
+- [x] Add CLI arguments for input `.aseprite`, output `.aseprite`, and model name.
+- [x] Add CLI arguments for optional processed-frame export directory.
+- [x] Add CLI arguments for optional mask export directory.
+- [x] Process all exported frames with one reused model session.
+- [x] Rebuild the processed frames into a new `.aseprite` file.
+- [x] Preserve canvas size.
+- [x] Preserve frame order.
+- [x] Preserve frame duration.
+- [x] Print progress for each processed frame.
+- [x] Print total runtime and average runtime per frame.
+- [x] Run the command against `images/sprite.aseprite`.
+- [x] Verify the output opens in Aseprite.
 
 ## Phase 4: Mask Cleanup Controls
 
-- [ ] Add an alpha threshold option.
-- [ ] Add an option to remove tiny isolated alpha artifacts.
-- [ ] Add an option to fill small holes in the foreground mask.
-- [ ] Add an option to keep the largest connected foreground component.
-- [ ] Add an edge feathering option.
-- [ ] Add an option to disable all cleanup and export raw model output.
-- [ ] Add mask cleanup unit tests using synthetic masks.
-- [ ] Compare before/after cleanup on `images/sprite.aseprite`.
-- [ ] Choose conservative default cleanup settings.
+- [x] Add an alpha threshold option.
+- [x] Add an option to remove tiny isolated alpha artifacts.
+- [x] Add an option to fill small holes in the foreground mask.
+- [x] Add an option to keep the largest connected foreground component.
+- [x] Add an edge feathering option.
+- [x] Add an option to disable all cleanup and export raw model output.
+- [x] Add mask cleanup unit tests using synthetic masks.
+- [x] Compare before/after cleanup on `images/sprite.aseprite`.
+- [x] Choose conservative default cleanup settings.
 
 ## Phase 5: Temporal Consistency Checks
 

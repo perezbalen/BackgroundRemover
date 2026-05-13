@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 from pathlib import Path
+import time
 
 from background_remover import __version__
 from background_remover.aseprite import (
@@ -14,6 +15,7 @@ from background_remover.aseprite import (
     write_flattened_aseprite,
 )
 from background_remover.background import SUPPORTED_MODELS, BackgroundRemovalError
+from background_remover.mask_cleanup import MaskCleanupOptions, apply_alpha_mask, apply_mask_cleanup
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,15 +46,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     process_parser = subparsers.add_parser(
         "process",
-        help="Remove a sprite background. Implemented in a later phase.",
+        help="Remove backgrounds from every frame in an .aseprite file.",
     )
     process_parser.add_argument("input", help="Path to an input .aseprite file.")
     process_parser.add_argument("output", help="Path for the processed .aseprite file.")
     process_parser.add_argument(
         "--model",
+        choices=SUPPORTED_MODELS,
         default="isnet-anime",
-        help="Background-removal model to use once model support is implemented.",
+        help="Background-removal model to use.",
     )
+    process_parser.add_argument(
+        "--frame-output-dir",
+        help="Optional directory for processed RGBA frame PNGs.",
+    )
+    process_parser.add_argument(
+        "--mask-output-dir",
+        help="Optional directory for raw alpha mask PNGs.",
+    )
+    process_parser.add_argument(
+        "--model-cache-dir",
+        default=".cache/rembg-models",
+        help="Directory for downloaded rembg model files.",
+    )
+    _add_mask_cleanup_arguments(process_parser)
 
     remove_image_parser = subparsers.add_parser(
         "remove-image",
@@ -75,6 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=".cache/rembg-models",
         help="Directory for downloaded rembg model files.",
     )
+    _add_mask_cleanup_arguments(remove_image_parser)
 
     benchmark_parser = subparsers.add_parser(
         "benchmark-image",
@@ -111,6 +129,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _inspect(args.input)
         if args.command == "rebuild-noop":
             return _rebuild_noop(args.input, args.output)
+        if args.command == "process":
+            return _process_aseprite(
+                args.input,
+                args.output,
+                args.model,
+                args.frame_output_dir,
+                args.mask_output_dir,
+                args.model_cache_dir,
+                _cleanup_options_from_args(args),
+            )
         if args.command == "remove-image":
             return _remove_image(
                 args.input,
@@ -118,13 +146,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.model,
                 args.mask_output,
                 args.model_cache_dir,
+                _cleanup_options_from_args(args),
             )
         if args.command == "benchmark-image":
             return _benchmark_image(args.input, args.output_dir, args.models, args.model_cache_dir)
     except (AsepriteError, BackgroundRemovalError) as error:
         parser.exit(1, f"error: {error}\n")
 
-    parser.error(f"command '{args.command}' is planned but not implemented yet")
+    parser.error(f"unknown command '{args.command}'")
     return 2
 
 
@@ -172,12 +201,106 @@ def _rebuild_noop(input_path: str, output_path: str) -> int:
     return 0
 
 
+def _process_aseprite(
+    input_path: str,
+    output_path: str,
+    model_name: str,
+    frame_output_dir: str | None,
+    mask_output_dir: str | None,
+    model_cache_dir: str,
+    cleanup_options: MaskCleanupOptions,
+) -> int:
+    try:
+        from PIL import Image
+    except ImportError as error:
+        raise BackgroundRemovalError(
+            "Missing Pillow dependency. Run: " 'python3 -m pip install -e ".[dev]"'
+        ) from error
+
+    from background_remover.background import RembgBackgroundRemover
+
+    total_started = time.perf_counter()
+    sprite = read_aseprite(input_path)
+    source_frames = flatten_frames(sprite)
+    durations = [frame.duration_ms for frame in sprite.frames]
+
+    frame_output = Path(frame_output_dir) if frame_output_dir else None
+    mask_output = Path(mask_output_dir) if mask_output_dir else None
+    if frame_output:
+        frame_output.mkdir(parents=True, exist_ok=True)
+    if mask_output:
+        mask_output.mkdir(parents=True, exist_ok=True)
+
+    remover = RembgBackgroundRemover(model_name, model_cache_dir=model_cache_dir)
+    processed_frames: list[bytes] = []
+    processing_elapsed = 0.0
+    frame_count = len(source_frames)
+
+    for index, pixels in enumerate(source_frames):
+        image = Image.frombytes("RGBA", (sprite.width, sprite.height), pixels)
+        result = remover.remove(image)
+        if result.image.size != (sprite.width, sprite.height):
+            raise BackgroundRemovalError(
+                f"Model returned frame {index + 1} at {result.image.width}x{result.image.height}; "
+                f"expected {sprite.width}x{sprite.height}"
+            )
+
+        try:
+            cleaned_mask = apply_mask_cleanup(result.mask, cleanup_options)
+        except ValueError as error:
+            raise BackgroundRemovalError(str(error)) from error
+
+        processed = apply_alpha_mask(result.image, cleaned_mask)
+        processed_frames.append(processed.tobytes())
+        processing_elapsed += result.elapsed_seconds
+
+        frame_name = f"frame-{index:04d}.png"
+        if frame_output:
+            processed.save(frame_output / frame_name)
+        if mask_output:
+            cleaned_mask.save(mask_output / frame_name)
+
+        print(
+            f"Processed frame {index + 1}/{frame_count} "
+            f"in {result.elapsed_seconds:.2f}s"
+        )
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    write_flattened_aseprite(
+        str(output),
+        width=sprite.width,
+        height=sprite.height,
+        frame_pixels=processed_frames,
+        durations_ms=durations,
+        tags=sprite.tags,
+    )
+
+    total_elapsed = time.perf_counter() - total_started
+    average_elapsed = processing_elapsed / frame_count if frame_count else 0.0
+    print(f"Wrote {output}")
+    if frame_output:
+        print(f"Wrote processed frames to {frame_output}")
+    if mask_output:
+        print(f"Wrote masks to {mask_output}")
+    print(f"Model: {model_name}")
+    print(f"Model cache: {model_cache_dir}")
+    print(f"Cleanup: {_describe_cleanup(cleanup_options)}")
+    print(f"Frames: {frame_count}")
+    print(f"Canvas: {sprite.width}x{sprite.height}")
+    print(f"Processing time: {processing_elapsed:.2f}s")
+    print(f"Average frame time: {average_elapsed:.2f}s")
+    print(f"Total time: {total_elapsed:.2f}s")
+    return 0
+
+
 def _remove_image(
     input_path: str,
     output_path: str,
     model_name: str,
     mask_output_path: str | None,
     model_cache_dir: str,
+    cleanup_options: MaskCleanupOptions,
 ) -> int:
     from background_remover.background import remove_image_file
 
@@ -187,12 +310,14 @@ def _remove_image(
         model_name=model_name,
         mask_output_path=mask_output_path,
         model_cache_dir=model_cache_dir,
+        cleanup_options=cleanup_options,
     )
     print(f"Wrote {output_path}")
     if mask_output_path:
         print(f"Wrote {mask_output_path}")
     print(f"Model: {model_name}")
     print(f"Model cache: {model_cache_dir}")
+    print(f"Cleanup: {_describe_cleanup(cleanup_options)}")
     print(f"Time: {result.elapsed_seconds:.2f}s")
     return 0
 
@@ -212,6 +337,66 @@ def _benchmark_image(
     print(f"Wrote outputs to {output_dir}")
     print(f"Model cache: {model_cache_dir}")
     return 0
+
+
+def _add_mask_cleanup_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--no-cleanup",
+        action="store_true",
+        help="Disable mask cleanup and use the raw model alpha output.",
+    )
+    parser.add_argument(
+        "--alpha-threshold",
+        type=int,
+        help="Optional alpha threshold from 0 to 255. Pixels below it become transparent.",
+    )
+    parser.add_argument(
+        "--min-artifact-size",
+        type=int,
+        default=4,
+        help="Remove isolated foreground components smaller than this many pixels. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--fill-hole-size",
+        type=int,
+        default=4,
+        help="Fill enclosed transparent holes up to this many pixels. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--keep-largest-component",
+        action="store_true",
+        help="Keep only the largest connected foreground component.",
+    )
+    parser.add_argument(
+        "--feather-radius",
+        type=float,
+        default=0.0,
+        help="Apply Gaussian feathering to the cleaned alpha mask. Use 0 to disable.",
+    )
+
+
+def _cleanup_options_from_args(args: argparse.Namespace) -> MaskCleanupOptions:
+    return MaskCleanupOptions(
+        enabled=not args.no_cleanup,
+        alpha_threshold=args.alpha_threshold,
+        min_artifact_size=args.min_artifact_size,
+        fill_hole_size=args.fill_hole_size,
+        keep_largest_component=args.keep_largest_component,
+        feather_radius=args.feather_radius,
+    )
+
+
+def _describe_cleanup(options: MaskCleanupOptions) -> str:
+    if not options.enabled:
+        return "disabled"
+    threshold = "none" if options.alpha_threshold is None else str(options.alpha_threshold)
+    return (
+        f"alpha_threshold={threshold}, "
+        f"min_artifact_size={options.min_artifact_size}, "
+        f"fill_hole_size={options.fill_hole_size}, "
+        f"keep_largest_component={options.keep_largest_component}, "
+        f"feather_radius={options.feather_radius:g}"
+    )
 
 
 if __name__ == "__main__":
