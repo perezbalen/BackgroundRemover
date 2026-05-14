@@ -203,3 +203,55 @@ def test_gui_artifact_items_include_only_generated_paths() -> None:
         ("Processed frames", Path("frames")),
         ("JSON report", Path("report.json")),
     ]
+
+
+def test_gui_paths_from_mime_data_accepts_urls_and_text_paths() -> None:
+    from PySide6.QtCore import QMimeData, QUrl
+
+    from background_remover.gui.main_window import _paths_from_mime_data
+
+    mime_data = QMimeData()
+    mime_data.setUrls([QUrl.fromLocalFile("/tmp/source.png")])
+    mime_data.setText("/tmp/other.aseprite\n")
+
+    assert _paths_from_mime_data(mime_data) == [
+        Path("/tmp/source.png"),
+        Path("/tmp/other.aseprite"),
+    ]
+
+
+def test_gui_paths_from_mime_data_maps_windows_paths_for_wsl() -> None:
+    from PySide6.QtCore import QMimeData
+
+    from background_remover.gui.main_window import _paths_from_mime_data
+
+    mime_data = QMimeData()
+    mime_data.setText(r"E:\Repos\perezbalen\BackgroundRemover\images\susan.png")
+
+    assert _paths_from_mime_data(mime_data) == [
+        Path("/mnt/e/Repos/perezbalen/BackgroundRemover/images/susan.png")
+    ]
+
+
+def test_gui_paths_from_mime_data_accepts_windows_filenamew_format() -> None:
+    from PySide6.QtCore import QMimeData, QByteArray
+
+    from background_remover.gui.main_window import _paths_from_mime_data
+
+    mime_data = QMimeData()
+    mime_data.setData(
+        'application/x-qt-windows-mime;value="FileNameW"',
+        QByteArray(bytes("E:\\Images\\sprite.aseprite\x00", "utf-16le")),
+    )
+
+    assert _paths_from_mime_data(mime_data) == [Path("/mnt/e/Images/sprite.aseprite")]
+
+
+def test_gui_windows_path_text_is_preserved_outside_wsl(monkeypatch) -> None:
+    import background_remover.gui.main_window as main_window
+
+    monkeypatch.setattr(main_window, "_running_under_wsl", lambda: False)
+
+    assert main_window._path_from_drag_text(r"E:\Images\sprite.aseprite") == Path(
+        r"E:\Images\sprite.aseprite"
+    )

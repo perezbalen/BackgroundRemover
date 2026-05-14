@@ -152,18 +152,18 @@ Phase 0 decisions:
 
 ## Phase 7: Save And Drag-Out Export
 
-- [ ] Add Save As for still-image PNG outputs.
-- [ ] Add Save As for processed `.aseprite` outputs.
-- [ ] Add managed temporary output files when the user processes before choosing
+- [x] Add Save As for still-image PNG outputs.
+- [x] Add Save As for processed `.aseprite` outputs.
+- [x] Add managed temporary output files when the user processes before choosing
   a final save path.
-- [ ] Add a visible output filename and drag handle.
-- [ ] Implement file drag data using real file URLs.
-- [ ] Disable drag-out while processing, before success, and after errors.
-- [ ] Verify drag-to-save into Windows File Explorer.
+- [x] Add a visible output filename and drag handle.
+- [x] Implement file drag data using real file URLs.
+- [x] Disable drag-out while processing, before success, and after errors.
+- [x] Verify drag-to-save into Windows File Explorer.
 - [ ] Verify drag-to-save into at least one Linux file manager if Linux is a
   supported target.
 - [ ] Verify drag-to-save into Finder if macOS is a supported target.
-- [ ] Keep Save As as a reliable fallback when OS drag-out behavior differs.
+- [x] Keep Save As as a reliable fallback when OS drag-out behavior differs.
 
 ## Phase 8: Optional Secondary Tools
 

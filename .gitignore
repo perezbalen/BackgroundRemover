@@ -16,6 +16,7 @@ output/
 .venv/
 venv/
 env/
+.venv-win/
 
 # Build artifacts
 build/

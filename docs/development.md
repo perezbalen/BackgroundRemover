@@ -64,6 +64,19 @@ Launch the GUI:
 background-remover-gui
 ```
 
+For Windows File Explorer drag/drop, run the GUI with native Windows Python from
+PowerShell or Windows Terminal, not from WSL. A WSL/WSLg Qt window can display
+on Windows, but it is still a Linux app and does not provide reliable file
+drag/drop integration with Explorer.
+
+Example native Windows setup from the repository folder:
+
+```powershell
+py -3.12 -m venv .venv-win
+.\.venv-win\Scripts\python.exe -m pip install -e ".[dev,gui]"
+.\.venv-win\Scripts\background-remover-gui.exe
+```
+
 Without installing the console script, the entry point can be checked from the
 repository root:
 

@@ -8,6 +8,39 @@ The project is currently in scaffold phase. See:
 - [CLI implementation plan](docs/cli-implementation-plan.md)
 - [Development setup](docs/development.md)
 
+## Desktop GUI
+
+The GUI is a local PySide6 desktop app:
+
+```bash
+background-remover-gui
+```
+
+Windows File Explorer drag/drop is the first supported desktop integration. For
+that workflow, run the GUI with native Windows Python from PowerShell or Windows
+Terminal, not from WSL. A WSL/WSLg Qt window can appear on the Windows desktop,
+but it is still a Linux app and does not provide reliable file drag/drop
+integration with Explorer.
+
+From the repository folder on Windows:
+
+```powershell
+py -3.12 -m venv .venv-win
+.\.venv-win\Scripts\python.exe -m pip install -e ".[dev,gui]"
+.\.venv-win\Scripts\background-remover-gui.exe
+```
+
+With the native Windows launch path, you can:
+
+- drag `.aseprite` or supported image files from File Explorer into the app;
+- process locally and review the output preview;
+- drag the processed output image or the `Drag <filename>` toolbar handle back
+  into File Explorer;
+- use **Save As** as the fallback export path on every platform.
+
+WSL is still useful for CLI development and tests, but not for Windows Explorer
+drag/drop validation.
+
 ## CLI Examples
 
 After installing in editable mode, run:
