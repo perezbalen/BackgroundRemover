@@ -30,6 +30,10 @@ py -3.12 -m venv .venv-win
 .\.venv-win\Scripts\background-remover-gui.exe
 ```
 
+You can also double-click `launch-gui-windows.bat` from File Explorer. The
+script creates `.venv-win` if needed, installs the GUI dependencies if the app
+launcher is missing, and starts the native Windows GUI.
+
 With the native Windows launch path, you can:
 
 - drag `.aseprite` or supported image files from File Explorer into the app;
