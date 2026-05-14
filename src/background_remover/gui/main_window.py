@@ -6,10 +6,12 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import sys
 import tempfile
 import time
 from typing import Any
 
+from background_remover import __version__
 from background_remover.background import SUPPORTED_MODELS
 from background_remover.gui.input_loader import (
     LoadedInput,
@@ -28,7 +30,7 @@ from background_remover.gui.processing_options import (
 )
 from background_remover.gui.settings import GuiSettings
 from background_remover.gui.theme import MOCHA
-from background_remover.gui.worker import ProcessingWorker
+from background_remover.gui.worker import BenchmarkWorker, ProcessingWorker, RebuildNoopWorker
 from background_remover.mask_cleanup import MaskCleanupOptions
 
 from PySide6.QtCore import (
@@ -84,6 +86,8 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStatusBar,
     QStyle,
+    QTableWidget,
+    QTableWidgetItem,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -99,10 +103,13 @@ class MainWindow(QMainWindow):
         self.loaded_input: LoadedInput | None = None
         self.processing_thread: QThread | None = None
         self.processing_worker: ProcessingWorker | None = None
+        self.tool_thread: QThread | None = None
+        self.tool_worker: Any | None = None
         self.processing_started_at = 0.0
         self.completed_frame_seconds: list[float] = []
         self.last_successful_output_path: Path | None = None
         self.last_processing_result: Any | None = None
+        self.benchmark_results: list[Any] = []
         self.output_view_paths: dict[str, Path] = {}
         self.output_path_user_selected = False
         self.managed_temp_dir = tempfile.TemporaryDirectory(prefix="background-remover-gui-")
@@ -121,6 +128,7 @@ class MainWindow(QMainWindow):
         self.process_action.triggered.connect(self.start_processing)
         self.cancel_action.triggered.connect(self.cancel_processing)
         self.save_as_action.triggered.connect(self.choose_output_path)
+        self.about_action.triggered.connect(self.show_about_dialog)
         self.model_select.currentTextChanged.connect(self._update_model_metadata)
         self.cache_dir_input.textChanged.connect(self._update_model_metadata)
         self.preset_select.currentTextChanged.connect(self._apply_preset)
@@ -419,6 +427,53 @@ class MainWindow(QMainWindow):
         self.input_metadata_label.setWordWrap(True)
         metadata_layout.addWidget(self.input_metadata_label)
 
+        tools_group = QGroupBox("Optional Tools")
+        tools_layout = QVBoxLayout(tools_group)
+        self.rebuild_noop_button = QPushButton("Rebuild Without Removal")
+        self.rebuild_noop_button.clicked.connect(self.rebuild_without_removal)
+        tools_layout.addWidget(self.rebuild_noop_button)
+
+        self.benchmark_model_list = QListWidget()
+        self.benchmark_model_list.setMaximumHeight(150)
+        for model_name in SUPPORTED_MODELS:
+            item = QListWidgetItem(model_name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            checked = model_name in {"bria-rmbg", "u2netp", "isnet-anime"}
+            item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+            self.benchmark_model_list.addItem(item)
+        tools_layout.addWidget(QLabel("Compare Models"))
+        tools_layout.addWidget(self.benchmark_model_list)
+
+        benchmark_folder_row = QHBoxLayout()
+        self.benchmark_output_dir = QLineEdit()
+        self.benchmark_output_dir.setPlaceholderText("Benchmark output folder")
+        benchmark_folder_button = QPushButton("Browse")
+        benchmark_folder_button.clicked.connect(lambda: self._choose_directory(self.benchmark_output_dir))
+        benchmark_folder_row.addWidget(self.benchmark_output_dir, stretch=1)
+        benchmark_folder_row.addWidget(benchmark_folder_button)
+        tools_layout.addLayout(benchmark_folder_row)
+
+        benchmark_action_row = QHBoxLayout()
+        self.run_benchmark_button = QPushButton("Run Compare")
+        self.run_benchmark_button.clicked.connect(self.run_model_benchmark)
+        self.open_benchmark_output_button = QPushButton("Open Output")
+        self.open_benchmark_output_button.clicked.connect(self.open_selected_benchmark_output)
+        self.open_benchmark_mask_button = QPushButton("Open Mask")
+        self.open_benchmark_mask_button.clicked.connect(self.open_selected_benchmark_mask)
+        benchmark_action_row.addWidget(self.run_benchmark_button)
+        benchmark_action_row.addWidget(self.open_benchmark_output_button)
+        benchmark_action_row.addWidget(self.open_benchmark_mask_button)
+        tools_layout.addLayout(benchmark_action_row)
+
+        self.benchmark_results_table = QTableWidget(0, 4)
+        self.benchmark_results_table.setHorizontalHeaderLabels(["Model", "Seconds", "Output", "Mask"])
+        self.benchmark_results_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.benchmark_results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.benchmark_results_table.setMaximumHeight(160)
+        tools_layout.addWidget(self.benchmark_results_table)
+
         layout.addWidget(model_group)
         layout.addWidget(logging_group)
         layout.addWidget(cleanup_group)
@@ -428,6 +483,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(report_group)
         layout.addWidget(command_group)
         layout.addWidget(metadata_group)
+        layout.addWidget(tools_group)
         layout.addStretch(1)
         self._connect_command_preview_controls(panel)
         return scroll
@@ -542,6 +598,119 @@ class MainWindow(QMainWindow):
         color = QColorDialog.getColor(parent=self)
         if color.isValid():
             self.color_key_color.setText(color.name())
+
+    def show_about_dialog(self) -> None:
+        QMessageBox.information(
+            self,
+            "About Aseprite Background Remover",
+            _format_about_text(
+                app_version=__version__,
+                cli_version=__version__,
+                python_version=sys.version.split()[0],
+                model_cache_dir=Path(self.cache_dir_input.text() or ".cache/rembg-models"),
+            ),
+        )
+
+    def rebuild_without_removal(self) -> None:
+        if self.loaded_input is None:
+            self._show_error("Load an .aseprite input before rebuilding.")
+            return
+        metadata = self.loaded_input.metadata
+        if metadata.input_type != "aseprite":
+            self._show_error("Rebuild Without Removal only supports .aseprite inputs.")
+            return
+        suggested = metadata.path.with_name(f"{metadata.path.stem}.rebuilt.aseprite")
+        output_text, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Rebuild Without Removal",
+            str(suggested),
+            "Aseprite files (*.aseprite)",
+        )
+        if not output_text:
+            return
+        output_path = Path(output_text)
+        overwrite = self.overwrite_output.isChecked()
+        if output_path.exists() and not overwrite:
+            answer = QMessageBox.question(
+                self,
+                "Replace Existing Output",
+                f"{output_path} already exists. Replace it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            overwrite = True
+
+        self._set_tool_running(True, "Rebuilding without removal")
+        worker = RebuildNoopWorker(metadata.path, output_path, overwrite=overwrite)
+        thread = QThread(self)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.completed.connect(self._handle_rebuild_completed)
+        worker.failed.connect(self._handle_tool_failed)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_tool_refs)
+        self.tool_worker = worker
+        self.tool_thread = thread
+        thread.start()
+
+    def run_model_benchmark(self) -> None:
+        if self.loaded_input is None:
+            self._show_error("Load a still image before comparing models.")
+            return
+        metadata = self.loaded_input.metadata
+        if metadata.input_type != "image":
+            self._show_error("Compare Models uses the still-image benchmark workflow.")
+            return
+        model_names = self._selected_benchmark_models()
+        if not model_names:
+            self._show_validation_error("Select at least one model to compare.")
+            return
+        output_dir_text = self.benchmark_output_dir.text().strip()
+        output_dir = (
+            Path(output_dir_text)
+            if output_dir_text
+            else metadata.path.parent / f"{metadata.path.stem}.benchmark"
+        )
+        if not output_dir_text:
+            self.benchmark_output_dir.setText(str(output_dir))
+
+        self._set_tool_running(True, "Comparing models")
+        self.benchmark_results_table.setRowCount(0)
+        self.benchmark_results = []
+        worker = BenchmarkWorker(
+            input_path=metadata.path,
+            output_dir=output_dir,
+            model_names=model_names,
+            model_cache_dir=Path(self.cache_dir_input.text() or ".cache/rembg-models"),
+            overwrite=self.overwrite_output.isChecked(),
+        )
+        thread = QThread(self)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._handle_benchmark_progress)
+        worker.completed.connect(self._handle_benchmark_completed)
+        worker.failed.connect(self._handle_tool_failed)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_tool_refs)
+        self.tool_worker = worker
+        self.tool_thread = thread
+        thread.start()
+
+    def open_selected_benchmark_output(self) -> None:
+        result = self._selected_benchmark_result()
+        if result is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(result.output_path.resolve())))
+
+    def open_selected_benchmark_mask(self) -> None:
+        result = self._selected_benchmark_result()
+        if result is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(result.mask_path.resolve())))
 
     def _connect_command_preview_controls(self, panel: QWidget) -> None:
         for line_edit in panel.findChildren(QLineEdit):
@@ -807,6 +976,39 @@ class MainWindow(QMainWindow):
         self.report_summary_label.setText("Processing failed")
         self._set_warning_messages([message])
         self._set_drag_export_path(None)
+
+    def _handle_rebuild_completed(self, output_path: Path) -> None:
+        self._set_tool_running(False, "Ready")
+        self.status_label.setText("Rebuilt")
+        self.statusBar().showMessage(f"Wrote {output_path}")
+        self.report_summary_label.setText("Rebuild Without Removal complete")
+        self._set_warning_messages([f"Wrote rebuilt .aseprite: {output_path}"])
+
+    def _handle_benchmark_progress(self, model_name: str, index: int, total: int) -> None:
+        self.progress_bar.setRange(0, total)
+        self.progress_bar.setValue(index - 1)
+        self.status_label.setText(f"Benchmarking {model_name}")
+        self.statusBar().showMessage(f"Model {index}/{total}")
+
+    def _handle_benchmark_completed(self, results: list[Any]) -> None:
+        self.benchmark_results = results
+        self._populate_benchmark_results(results)
+        self._set_tool_running(False, "Ready")
+        self.progress_bar.setRange(0, max(len(results), 1))
+        self.progress_bar.setValue(len(results))
+        self.status_label.setText("Benchmark complete")
+        self.statusBar().showMessage(f"Compared {len(results)} model(s)")
+        self.report_summary_label.setText("Compare Models complete")
+        self._set_warning_messages(
+            [f"{result.model_name}: {result.seconds:.2f}s" for result in results]
+        )
+
+    def _handle_tool_failed(self, message: str) -> None:
+        self._set_tool_running(False, "Ready")
+        self.status_label.setText("Error")
+        self.statusBar().showMessage(message)
+        self.report_summary_label.setText("Optional tool failed")
+        self._set_warning_messages([message])
 
     def _load_output_preview(self, output_path: Path) -> None:
         try:
@@ -1136,10 +1338,61 @@ class MainWindow(QMainWindow):
         self.reveal_artifact_button.setEnabled(
             not processing and self.artifacts_panel.currentItem() is not None
         )
+        self.rebuild_noop_button.setEnabled(not processing)
+        self.run_benchmark_button.setEnabled(not processing)
 
     def _clear_worker_refs(self) -> None:
         self.processing_thread = None
         self.processing_worker = None
+
+    def _clear_tool_refs(self) -> None:
+        self.tool_thread = None
+        self.tool_worker = None
+
+    def _set_tool_running(self, running: bool, message: str) -> None:
+        self.open_action.setEnabled(not running)
+        self.validate_action.setEnabled(not running)
+        self.process_action.setEnabled(not running and self.loaded_input is not None)
+        self.save_as_action.setEnabled(not running and self.loaded_input is not None)
+        self.rebuild_noop_button.setEnabled(not running)
+        self.run_benchmark_button.setEnabled(not running)
+        self.cancel_action.setEnabled(False)
+        self.progress_bar.setRange(0, 0 if running else 100)
+        if not running:
+            self.progress_bar.setValue(0)
+        self.status_label.setText(message)
+        self.statusBar().showMessage(message)
+
+    def _selected_benchmark_models(self) -> list[str]:
+        model_names = []
+        for row in range(self.benchmark_model_list.count()):
+            item = self.benchmark_model_list.item(row)
+            if item.checkState() == Qt.CheckState.Checked:
+                model_names.append(item.text())
+        return model_names
+
+    def _populate_benchmark_results(self, results: list[Any]) -> None:
+        self.benchmark_results_table.setRowCount(len(results))
+        for row, result in enumerate(results):
+            values = [
+                result.model_name,
+                f"{result.seconds:.2f}",
+                str(result.output_path),
+                str(result.mask_path),
+            ]
+            for column, value in enumerate(values):
+                self.benchmark_results_table.setItem(row, column, QTableWidgetItem(value))
+        if results:
+            self.benchmark_results_table.selectRow(0)
+
+    def _selected_benchmark_result(self):
+        selected = self.benchmark_results_table.selectedItems()
+        if not selected:
+            return None
+        row = selected[0].row()
+        if 0 <= row < len(self.benchmark_results):
+            return self.benchmark_results[row]
+        return None
 
     def _update_model_metadata(self, *_args) -> None:
         if not hasattr(self, "model_metadata_label"):
@@ -1584,6 +1837,24 @@ def _format_metadata(loaded: LoadedInput) -> str:
         parts.append(f"Layers: {metadata.layer_count}")
         parts.append(f"Tags: {', '.join(metadata.tags) if metadata.tags else 'none'}")
     return "\n".join(parts)
+
+
+def _format_about_text(
+    *,
+    app_version: str,
+    cli_version: str,
+    python_version: str,
+    model_cache_dir: Path,
+) -> str:
+    return "\n".join(
+        [
+            "Aseprite Background Remover",
+            f"App version: {app_version}",
+            f"CLI version: {cli_version}",
+            f"Python: {python_version}",
+            f"Model cache: {model_cache_dir}",
+        ]
+    )
 
 
 def _format_output_summary(

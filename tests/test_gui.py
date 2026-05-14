@@ -255,3 +255,34 @@ def test_gui_windows_path_text_is_preserved_outside_wsl(monkeypatch) -> None:
     assert main_window._path_from_drag_text(r"E:\Images\sprite.aseprite") == Path(
         r"E:\Images\sprite.aseprite"
     )
+
+
+def test_gui_about_text_includes_versions_python_and_cache() -> None:
+    from background_remover.gui.main_window import _format_about_text
+
+    text = _format_about_text(
+        app_version="1.2.3",
+        cli_version="1.2.3",
+        python_version="3.12.0",
+        model_cache_dir=Path(".cache/rembg-models"),
+    )
+
+    assert "App version: 1.2.3" in text
+    assert "CLI version: 1.2.3" in text
+    assert "Python: 3.12.0" in text
+    assert "Model cache: .cache/rembg-models" in text
+
+
+def test_benchmark_model_result_records_output_and_mask_paths() -> None:
+    from background_remover.gui.worker import BenchmarkModelResult
+
+    result = BenchmarkModelResult(
+        model_name="bria-rmbg",
+        seconds=1.25,
+        output_path=Path("bench/bria-rmbg.png"),
+        mask_path=Path("bench/bria-rmbg.mask.png"),
+    )
+
+    assert result.model_name == "bria-rmbg"
+    assert result.output_path.name == "bria-rmbg.png"
+    assert result.mask_path.name == "bria-rmbg.mask.png"

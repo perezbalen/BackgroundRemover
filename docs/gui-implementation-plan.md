@@ -167,14 +167,14 @@ Phase 0 decisions:
 
 ## Phase 8: Optional Secondary Tools
 
-- [ ] Add About dialog that includes app version, CLI version, Python version,
+- [x] Add About dialog that includes app version, CLI version, Python version,
   and model cache path.
-- [ ] Add Rebuild Without Removal developer action for `rebuild-noop`.
-- [ ] Add Compare Models workflow for `benchmark-image`.
-- [ ] Add model multi-select for Compare Models.
-- [ ] Add benchmark output folder picker.
-- [ ] Render benchmark results as a model/time table.
-- [ ] Let users open benchmark output images and masks from the GUI.
+- [x] Add Rebuild Without Removal developer action for `rebuild-noop`.
+- [x] Add Compare Models workflow for `benchmark-image`.
+- [x] Add model multi-select for Compare Models.
+- [x] Add benchmark output folder picker.
+- [x] Render benchmark results as a model/time table.
+- [x] Let users open benchmark output images and masks from the GUI.
 
 ## Phase 9: Testing And Validation
 
