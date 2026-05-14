@@ -73,22 +73,22 @@ Phase 0 decisions:
 
 ## Phase 3: Input Loading And Preview
 
-- [ ] Add file picker support for `.aseprite` and supported still-image formats.
-- [ ] Add drag-and-drop input support for the window and input preview pane.
-- [ ] Validate unsupported extensions with clear errors.
-- [ ] Handle multi-file drops by loading the first supported file and reporting
+- [x] Add file picker support for `.aseprite` and supported still-image formats.
+- [x] Add drag-and-drop input support for the window and input preview pane.
+- [x] Validate unsupported extensions with clear errors.
+- [x] Handle multi-file drops by loading the first supported file and reporting
   skipped files.
-- [ ] Load still-image metadata and preview images.
-- [ ] Load `.aseprite` metadata through the existing reader.
-- [ ] Flatten `.aseprite` preview frames through the existing frame path.
-- [ ] Render animated `.aseprite` previews using source frame durations.
-- [ ] Add play and pause controls.
-- [ ] Add frame scrubber and current-frame display.
-- [ ] Add zoom, fit, actual-size, and checkerboard background controls.
-- [ ] Keep preview panel dimensions stable while loading, erroring, or changing
+- [x] Load still-image metadata and preview images.
+- [x] Load `.aseprite` metadata through the existing reader.
+- [x] Flatten `.aseprite` preview frames through the existing frame path.
+- [x] Render animated `.aseprite` previews using source frame durations.
+- [x] Add play and pause controls.
+- [x] Add frame scrubber and current-frame display.
+- [x] Add zoom, fit, actual-size, and checkerboard background controls.
+- [x] Keep preview panel dimensions stable while loading, erroring, or changing
   frames.
-- [ ] Show input metadata: dimensions, frame count, durations, layers, and tags.
-- [ ] Warn about known unpreserved metadata without blocking preview.
+- [x] Show input metadata: dimensions, frame count, durations, layers, and tags.
+- [x] Warn about known unpreserved metadata without blocking preview.
 
 ## Phase 4: Processing Workflow
 

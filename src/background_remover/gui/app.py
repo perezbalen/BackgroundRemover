@@ -37,10 +37,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise AssertionError("unreachable") from error
 
     from background_remover.gui.main_window import MainWindow
+    from background_remover.gui.theme import apply_theme
 
     app = QApplication(sys.argv[:1])
     app.setOrganizationName("perezbalen")
     app.setApplicationName("Aseprite Background Remover")
+    apply_theme(app)
     window = MainWindow()
     window.show()
     return app.exec()
