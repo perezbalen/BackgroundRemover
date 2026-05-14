@@ -92,50 +92,50 @@ Phase 0 decisions:
 
 ## Phase 4: Processing Workflow
 
-- [ ] Add model select with all supported models.
-- [ ] Show model metadata: best use, expected CPU cost, cache status, and license
+- [x] Add model select with all supported models.
+- [x] Show model metadata: best use, expected CPU cost, cache status, and license
   notes.
-- [ ] Add quick preset selection.
-- [ ] Add suggested output path generation.
-- [ ] Add overwrite protection and replace confirmation.
-- [ ] Run still-image processing from the GUI worker thread.
-- [ ] Run `.aseprite` processing from the GUI worker thread.
-- [ ] Keep the UI responsive during model loading and inference.
-- [ ] Show processing stage, frame progress, elapsed time, and average frame
+- [x] Add quick preset selection.
+- [x] Add suggested output path generation.
+- [x] Add overwrite protection and replace confirmation.
+- [x] Run still-image processing from the GUI worker thread.
+- [x] Run `.aseprite` processing from the GUI worker thread.
+- [x] Keep the UI responsive during model loading and inference.
+- [x] Show processing stage, frame progress, elapsed time, and average frame
   time.
-- [ ] Implement Cancel so it stops after the current frame and preserves
+- [x] Implement Cancel so it stops after the current frame and preserves
   existing successful outputs.
-- [ ] Render still-image output preview after success.
-- [ ] Render animated `.aseprite` output preview after success.
-- [ ] Synchronize input and output playback when both previews are animated.
-- [ ] Keep the previous successful output visible if a later run fails.
+- [x] Render still-image output preview after success.
+- [x] Render animated `.aseprite` output preview after success.
+- [x] Synchronize input and output playback when both previews are animated.
+- [x] Keep the previous successful output visible if a later run fails.
 
 ## Phase 5: Full Flag Coverage
 
-- [ ] Add model cache directory picker for `--model-cache-dir`.
-- [ ] Add dry-run or validate-settings action for `--dry-run`.
-- [ ] Add logging controls for quiet, normal, verbose, and debug behavior.
-- [ ] Add cleanup enabled toggle for `--no-cleanup`.
-- [ ] Add alpha threshold control with none or auto state.
-- [ ] Add minimum artifact size numeric control.
-- [ ] Add fill-hole size numeric control.
-- [ ] Add keep-largest-component toggle.
-- [ ] Add feather radius slider and numeric input.
-- [ ] Add color-key corner sampling toggle.
-- [ ] Add explicit color picker and hex/RGB input.
-- [ ] Add color-key tolerance slider and numeric input.
-- [ ] Add protect-alpha slider and numeric input.
-- [ ] Add processed-frame export folder picker.
-- [ ] Add final-mask export folder picker.
-- [ ] Add AI-mask export folder picker.
-- [ ] Add color-key-mask export folder picker.
-- [ ] Add still-image mask output path picker.
-- [ ] Add JSON report output path picker.
-- [ ] Add contact-sheet output path picker.
-- [ ] Add GIF preview output path picker.
-- [ ] Add report warning threshold controls for area jump and bounding-box jump.
-- [ ] Add a generated command preview for users who want CLI parity.
-- [ ] Add validation messages for invalid numeric and color values.
+- [x] Add model cache directory picker for `--model-cache-dir`.
+- [x] Add dry-run or validate-settings action for `--dry-run`.
+- [x] Add logging controls for quiet, normal, verbose, and debug behavior.
+- [x] Add cleanup enabled toggle for `--no-cleanup`.
+- [x] Add alpha threshold control with none or auto state.
+- [x] Add minimum artifact size numeric control.
+- [x] Add fill-hole size numeric control.
+- [x] Add keep-largest-component toggle.
+- [x] Add feather radius slider and numeric input.
+- [x] Add color-key corner sampling toggle.
+- [x] Add explicit color picker and hex/RGB input.
+- [x] Add color-key tolerance slider and numeric input.
+- [x] Add protect-alpha slider and numeric input.
+- [x] Add processed-frame export folder picker.
+- [x] Add final-mask export folder picker.
+- [x] Add AI-mask export folder picker.
+- [x] Add color-key-mask export folder picker.
+- [x] Add still-image mask output path picker.
+- [x] Add JSON report output path picker.
+- [x] Add contact-sheet output path picker.
+- [x] Add GIF preview output path picker.
+- [x] Add report warning threshold controls for area jump and bounding-box jump.
+- [x] Add a generated command preview for users who want CLI parity.
+- [x] Add validation messages for invalid numeric and color values.
 
 ## Phase 6: Reports, Artifacts, And Review Tools
 
