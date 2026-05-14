@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 from pathlib import Path
-import time
 
 from background_remover import __version__
 from background_remover.aseprite import (
@@ -17,30 +16,23 @@ from background_remover.aseprite import (
 from background_remover.background import SUPPORTED_MODELS, BackgroundRemovalError
 from background_remover.color_key import (
     ColorKeyOptions,
-    apply_color_key_assist,
-    describe_color_key_options,
     parse_rgb_color,
 )
-from background_remover.mask_cleanup import MaskCleanupOptions, apply_alpha_mask, apply_mask_cleanup
-from background_remover.reporting import (
-    build_processing_report,
-    write_contact_sheet,
-    write_gif_preview,
-    write_processing_report,
+from background_remover.mask_cleanup import MaskCleanupOptions
+from background_remover.processing import (
+    DEFAULT_MODEL,
+    LAYER_POLICY,
+    METADATA_POLICY,
+    AsepriteProcessingSettings,
+    ProgressEvent,
+    StillImageProcessingSettings,
+    build_aseprite_dry_run_plan,
+    prepare_output_file,
+    process_aseprite,
+    process_still_image,
+    require_input_file,
+    validate_aseprite_extension,
 )
-
-DEFAULT_MODEL = "bria-rmbg"
-LAYER_POLICY = "flattened processed layer"
-OUTPUT_LAYER_NAME = "Flattened"
-METADATA_POLICY = {
-    "canvas_size": "preserved",
-    "frame_order": "preserved",
-    "frame_count": "preserved",
-    "frame_duration": "preserved",
-    "animation_tags": "preserved",
-    "slices": "not preserved",
-    "layer_names": "not preserved; output uses a single Flattened layer",
-}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -268,8 +260,8 @@ def _list_models() -> int:
 
 
 def _inspect(input_path: str, verbose: int = 0, quiet: bool = False) -> int:
-    _require_input_file(input_path, "Aseprite input")
-    _validate_aseprite_extension(input_path)
+    require_input_file(input_path, "Aseprite input")
+    validate_aseprite_extension(input_path)
     sprite = read_aseprite(input_path)
     if quiet:
         print(f"{input_path}: {sprite.frame_count} frame(s), {sprite.width}x{sprite.height}")
@@ -302,9 +294,9 @@ def _inspect(input_path: str, verbose: int = 0, quiet: bool = False) -> int:
 
 
 def _rebuild_noop(input_path: str, output_path: str, overwrite: bool = False) -> int:
-    _require_input_file(input_path, "Aseprite input")
-    _validate_aseprite_extension(input_path)
-    _prepare_output_file(output_path, overwrite=overwrite, label="output .aseprite")
+    require_input_file(input_path, "Aseprite input")
+    validate_aseprite_extension(input_path)
+    prepare_output_file(output_path, overwrite=overwrite, label="output .aseprite")
     sprite = read_aseprite(input_path)
     frames = flatten_frames(sprite)
     durations = [frame.duration_ms for frame in sprite.frames]
@@ -344,191 +336,80 @@ def _process_aseprite(
     verbose: int,
     quiet: bool,
 ) -> int:
-    try:
-        from PIL import Image
-    except ImportError as error:
-        raise BackgroundRemovalError(
-            "Missing Pillow dependency. Run: " 'python3 -m pip install -e ".[dev]"'
-        ) from error
-
-    from background_remover.background import RembgBackgroundRemover
-
-    _require_input_file(input_path, "Aseprite input")
-    _validate_aseprite_extension(input_path)
-
-    total_started = time.perf_counter()
-    sprite = read_aseprite(input_path)
-    source_frames = flatten_frames(sprite)
-    durations = [frame.duration_ms for frame in sprite.frames]
-
-    cleanup_description = _describe_cleanup(cleanup_options)
-    color_key_description = describe_color_key_options(color_key_options)
-
-    if dry_run:
-        _print_process_dry_run(
-            input_path=input_path,
-            output_path=output_path,
-            sprite=sprite,
-            model_name=model_name,
-            model_cache_dir=model_cache_dir,
-            cleanup_description=cleanup_description,
-            color_key_description=color_key_description,
-            verbose=verbose,
-        )
-        return 0
-
-    _prepare_output_file(output_path, overwrite=overwrite, label="output .aseprite")
-    for optional_path, label in (
-        (report_output_path, "JSON report"),
-        (contact_sheet_output_path, "contact sheet"),
-        (preview_output_path, "animated preview"),
-    ):
-        if optional_path:
-            _prepare_output_file(optional_path, overwrite=overwrite, label=label)
-
-    frame_output = Path(frame_output_dir) if frame_output_dir else None
-    mask_output = Path(mask_output_dir) if mask_output_dir else None
-    ai_mask_output = Path(ai_mask_output_dir) if ai_mask_output_dir else None
-    color_key_mask_output = Path(color_key_mask_output_dir) if color_key_mask_output_dir else None
-    if frame_output:
-        frame_output.mkdir(parents=True, exist_ok=True)
-    if mask_output:
-        mask_output.mkdir(parents=True, exist_ok=True)
-    if ai_mask_output:
-        ai_mask_output.mkdir(parents=True, exist_ok=True)
-    if color_key_mask_output:
-        color_key_mask_output.mkdir(parents=True, exist_ok=True)
-
-    remover = RembgBackgroundRemover(model_name, model_cache_dir=model_cache_dir)
-    processed_frames: list[bytes] = []
-    original_images = []
-    mask_images = []
-    processed_images = []
-    processing_elapsed = 0.0
-    frame_count = len(source_frames)
-
-    for index, pixels in enumerate(source_frames):
-        image = Image.frombytes("RGBA", (sprite.width, sprite.height), pixels)
-        result = remover.remove(image)
-        if result.image.size != (sprite.width, sprite.height):
-            raise BackgroundRemovalError(
-                f"Model returned frame {index + 1} at {result.image.width}x{result.image.height}; "
-                f"expected {sprite.width}x{sprite.height}"
-            )
-
-        try:
-            cleaned_mask = apply_mask_cleanup(result.mask, cleanup_options)
-            color_key_result = apply_color_key_assist(image, cleaned_mask, color_key_options)
-        except ValueError as error:
-            raise BackgroundRemovalError(str(error)) from error
-
-        final_mask = color_key_result.combined_mask if color_key_result else cleaned_mask
-        if not cleanup_options.enabled and color_key_result is None:
-            processed = result.image.convert("RGBA")
-        else:
-            processed = apply_alpha_mask(result.image, final_mask)
-        processed_frames.append(processed.tobytes())
-        original_images.append(image.copy())
-        mask_images.append(final_mask.copy())
-        processed_images.append(processed.copy())
-        processing_elapsed += result.elapsed_seconds
-
-        frame_name = f"frame-{index:04d}.png"
-        if frame_output:
-            processed.save(frame_output / frame_name)
-        if mask_output:
-            final_mask.save(mask_output / frame_name)
-        if ai_mask_output:
-            cleaned_mask.save(ai_mask_output / frame_name)
-        if color_key_mask_output and color_key_result:
-            color_key_result.color_key_mask.save(color_key_mask_output / frame_name)
-
-        if not quiet:
-            print(
-                f"Processed frame {index + 1}/{frame_count} "
-                f"in {result.elapsed_seconds:.2f}s"
-            )
-
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    write_flattened_aseprite(
-        str(output),
-        width=sprite.width,
-        height=sprite.height,
-        frame_pixels=processed_frames,
-        durations_ms=durations,
-        tags=sprite.tags,
-        layer_name=OUTPUT_LAYER_NAME,
-    )
-
-    total_elapsed = time.perf_counter() - total_started
-    average_elapsed = processing_elapsed / frame_count if frame_count else 0.0
-    report = build_processing_report(
-        input_path=input_path,
-        output_path=str(output),
+    settings = AsepriteProcessingSettings(
+        input_path=Path(input_path),
+        output_path=Path(output_path),
         model_name=model_name,
-        cleanup=cleanup_description,
-        color_key=color_key_description,
-        layer_policy=LAYER_POLICY,
-        metadata_policy=METADATA_POLICY,
-        width=sprite.width,
-        height=sprite.height,
-        durations_ms=durations,
-        masks=mask_images,
-        processing_seconds=processing_elapsed,
-        total_seconds=total_elapsed,
+        frame_output_dir=Path(frame_output_dir) if frame_output_dir else None,
+        mask_output_dir=Path(mask_output_dir) if mask_output_dir else None,
+        ai_mask_output_dir=Path(ai_mask_output_dir) if ai_mask_output_dir else None,
+        color_key_mask_output_dir=Path(color_key_mask_output_dir)
+        if color_key_mask_output_dir
+        else None,
+        model_cache_dir=Path(model_cache_dir),
+        cleanup_options=cleanup_options,
+        color_key_options=color_key_options,
+        report_output_path=Path(report_output_path) if report_output_path else None,
+        contact_sheet_output_path=Path(contact_sheet_output_path)
+        if contact_sheet_output_path
+        else None,
+        preview_output_path=Path(preview_output_path) if preview_output_path else None,
         area_jump_threshold=area_jump_threshold,
         bbox_jump_threshold=bbox_jump_threshold,
+        overwrite=overwrite,
     )
 
-    if report_output_path:
-        write_processing_report(report_output_path, report)
-    if contact_sheet_output_path:
-        write_contact_sheet(contact_sheet_output_path, original_images, mask_images, processed_images)
-    if preview_output_path:
-        write_gif_preview(preview_output_path, processed_images, durations)
+    if dry_run:
+        _print_process_dry_run(build_aseprite_dry_run_plan(settings), verbose=verbose)
+        return 0
+
+    result = process_aseprite(
+        settings,
+        progress=None if quiet else _print_aseprite_progress,
+    )
 
     if not quiet:
-        for warning in report["warnings"]:
+        for warning in result.warnings:
             print(f"warning: {warning['message']}")
         print(
             "warning: output is flattened into one processed layer; "
             "original layer names are not preserved"
         )
 
-    print(f"Wrote {output}")
+    artifacts = result.artifacts
+    print(f"Wrote {artifacts.output_path}")
     if quiet:
         return 0
-    if frame_output:
-        print(f"Wrote processed frames to {frame_output}")
-    if mask_output:
-        print(f"Wrote masks to {mask_output}")
-    if ai_mask_output:
-        print(f"Wrote AI masks to {ai_mask_output}")
-    if color_key_mask_output:
-        print(f"Wrote color-key masks to {color_key_mask_output}")
-    if report_output_path:
-        print(f"Wrote report to {report_output_path}")
-    if contact_sheet_output_path:
-        print(f"Wrote contact sheet to {contact_sheet_output_path}")
-    if preview_output_path:
-        print(f"Wrote preview to {preview_output_path}")
-    print(f"Model: {model_name}")
-    print(f"Model cache: {model_cache_dir}")
-    print(f"Cleanup: {cleanup_description}")
-    print(f"Color key: {color_key_description}")
-    print(f"Layer policy: {LAYER_POLICY}")
+    if artifacts.frame_output_dir:
+        print(f"Wrote processed frames to {artifacts.frame_output_dir}")
+    if artifacts.mask_output_dir:
+        print(f"Wrote masks to {artifacts.mask_output_dir}")
+    if artifacts.ai_mask_output_dir:
+        print(f"Wrote AI masks to {artifacts.ai_mask_output_dir}")
+    if artifacts.color_key_mask_output_dir:
+        print(f"Wrote color-key masks to {artifacts.color_key_mask_output_dir}")
+    if artifacts.report_output_path:
+        print(f"Wrote report to {artifacts.report_output_path}")
+    if artifacts.contact_sheet_output_path:
+        print(f"Wrote contact sheet to {artifacts.contact_sheet_output_path}")
+    if artifacts.preview_output_path:
+        print(f"Wrote preview to {artifacts.preview_output_path}")
+    print(f"Model: {result.model_name}")
+    print(f"Model cache: {result.model_cache_dir}")
+    print(f"Cleanup: {result.cleanup_description}")
+    print(f"Color key: {result.color_key_description}")
+    print(f"Layer policy: {result.layer_policy}")
     print("Metadata: canvas, frame order, frame durations, and animation tags preserved")
     if verbose:
         print("Metadata policy:")
-        for key, value in METADATA_POLICY.items():
+        for key, value in result.metadata_policy.items():
             print(f"  {key}: {value}")
-    print(f"Temporal warnings: {len(report['warnings'])}")
-    print(f"Frames: {frame_count}")
-    print(f"Canvas: {sprite.width}x{sprite.height}")
-    print(f"Processing time: {processing_elapsed:.2f}s")
-    print(f"Average frame time: {average_elapsed:.2f}s")
-    print(f"Total time: {total_elapsed:.2f}s")
+    print(f"Temporal warnings: {len(result.warnings)}")
+    print(f"Frames: {result.frame_count}")
+    print(f"Canvas: {result.width}x{result.height}")
+    print(f"Processing time: {result.timings.processing_seconds:.2f}s")
+    print(f"Average frame time: {result.timings.average_frame_seconds:.2f}s")
+    print(f"Total time: {result.timings.total_seconds:.2f}s")
     return 0
 
 
@@ -542,31 +423,38 @@ def _remove_image(
     overwrite: bool,
     quiet: bool,
 ) -> int:
-    from background_remover.background import remove_image_file
-
-    _require_input_file(input_path, "image input")
-    _prepare_output_file(output_path, overwrite=overwrite, label="output image")
-    if mask_output_path:
-        _prepare_output_file(mask_output_path, overwrite=overwrite, label="mask output")
-
-    result = remove_image_file(
-        input_path=input_path,
-        output_path=output_path,
-        model_name=model_name,
-        mask_output_path=mask_output_path,
-        model_cache_dir=model_cache_dir,
-        cleanup_options=cleanup_options,
+    result = process_still_image(
+        StillImageProcessingSettings(
+            input_path=Path(input_path),
+            output_path=Path(output_path),
+            model_name=model_name,
+            mask_output_path=Path(mask_output_path) if mask_output_path else None,
+            model_cache_dir=Path(model_cache_dir),
+            cleanup_options=cleanup_options,
+            overwrite=overwrite,
+        )
     )
-    print(f"Wrote {output_path}")
+    print(f"Wrote {result.artifacts.output_path}")
     if quiet:
         return 0
-    if mask_output_path:
-        print(f"Wrote {mask_output_path}")
-    print(f"Model: {model_name}")
-    print(f"Model cache: {model_cache_dir}")
-    print(f"Cleanup: {_describe_cleanup(cleanup_options)}")
-    print(f"Time: {result.elapsed_seconds:.2f}s")
+    if result.artifacts.mask_output_path:
+        print(f"Wrote {result.artifacts.mask_output_path}")
+    print(f"Model: {result.model_name}")
+    print(f"Model cache: {result.model_cache_dir}")
+    print(f"Cleanup: {result.cleanup_description}")
+    print(f"Time: {result.timings.processing_seconds:.2f}s")
     return 0
+
+
+def _print_aseprite_progress(event: ProgressEvent) -> None:
+    if event.stage != "frame_completed":
+        return
+    if event.frame_index is None or event.frame_count is None:
+        return
+    print(
+        f"Processed frame {event.frame_index}/{event.frame_count} "
+        f"in {event.elapsed_seconds:.2f}s"
+    )
 
 
 def _benchmark_image(
@@ -579,15 +467,15 @@ def _benchmark_image(
 ) -> int:
     from background_remover.background import benchmark_image_file
 
-    _require_input_file(input_path, "image input")
+    require_input_file(input_path, "image input")
     output = Path(output_dir)
     for model_name in model_names:
-        _prepare_output_file(
+        prepare_output_file(
             output / f"{model_name}.png",
             overwrite=overwrite,
             label=f"{model_name} output image",
         )
-        _prepare_output_file(
+        prepare_output_file(
             output / f"{model_name}.mask.png",
             overwrite=overwrite,
             label=f"{model_name} mask output",
@@ -716,67 +604,23 @@ def _color_key_options_from_args(args: argparse.Namespace) -> ColorKeyOptions:
     )
 
 
-def _describe_cleanup(options: MaskCleanupOptions) -> str:
-    if not options.enabled:
-        return "disabled"
-    threshold = "none" if options.alpha_threshold is None else str(options.alpha_threshold)
-    return (
-        f"alpha_threshold={threshold}, "
-        f"min_artifact_size={options.min_artifact_size}, "
-        f"fill_hole_size={options.fill_hole_size}, "
-        f"keep_largest_component={options.keep_largest_component}, "
-        f"feather_radius={options.feather_radius:g}"
-    )
-
-
-def _require_input_file(path: str, label: str) -> None:
-    input_path = Path(path)
-    if not input_path.exists():
-        raise BackgroundRemovalError(f"Missing {label}: {input_path}")
-    if not input_path.is_file():
-        raise BackgroundRemovalError(f"{label} is not a file: {input_path}")
-
-
-def _validate_aseprite_extension(path: str) -> None:
-    if Path(path).suffix.lower() != ".aseprite":
-        raise BackgroundRemovalError(f"Unsupported input extension for .aseprite command: {path}")
-
-
-def _prepare_output_file(path: str | Path, *, overwrite: bool, label: str) -> None:
-    output = Path(path)
-    if output.exists() and not overwrite:
-        raise BackgroundRemovalError(f"{label} already exists: {output} (use --overwrite to replace it)")
-    if output.parent and str(output.parent) != ".":
-        output.parent.mkdir(parents=True, exist_ok=True)
-
-
-def _print_process_dry_run(
-    *,
-    input_path: str,
-    output_path: str,
-    sprite,
-    model_name: str,
-    model_cache_dir: str,
-    cleanup_description: str,
-    color_key_description: str,
-    verbose: int,
-) -> None:
-    print(f"Dry run: {input_path}")
-    print(f"Planned output: {output_path}")
-    print(f"Canvas: {sprite.width}x{sprite.height}")
-    print(f"Frames: {sprite.frame_count}")
-    print("Frame durations: " + ", ".join(str(frame.duration_ms) for frame in sprite.frames))
-    print(f"Tags: {len(sprite.tags)}")
-    for tag in sprite.tags:
+def _print_process_dry_run(plan, *, verbose: int) -> None:
+    print(f"Dry run: {plan.input_path}")
+    print(f"Planned output: {plan.output_path}")
+    print(f"Canvas: {plan.width}x{plan.height}")
+    print(f"Frames: {plan.frame_count}")
+    print("Frame durations: " + ", ".join(str(duration) for duration in plan.durations_ms))
+    print(f"Tags: {len(plan.tags)}")
+    for tag in plan.tags:
         print(f"  {tag.name}: {tag.from_frame}-{tag.to_frame}")
-    print(f"Model: {model_name}")
-    print(f"Model cache: {model_cache_dir}")
-    print(f"Cleanup: {cleanup_description}")
-    print(f"Color key: {color_key_description}")
-    print(f"Layer policy: {LAYER_POLICY}")
+    print(f"Model: {plan.model_name}")
+    print(f"Model cache: {plan.model_cache_dir}")
+    print(f"Cleanup: {plan.cleanup_description}")
+    print(f"Color key: {plan.color_key_description}")
+    print(f"Layer policy: {plan.layer_policy}")
     if verbose:
         print("Metadata policy:")
-        for key, value in METADATA_POLICY.items():
+        for key, value in plan.metadata_policy.items():
             print(f"  {key}: {value}")
 
 

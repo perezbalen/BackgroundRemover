@@ -1,6 +1,8 @@
 # Development Setup
 
-This project targets a CPU-first local workflow. Phase 0 intentionally avoids heavy AI dependencies; model packages will be added in later phases.
+This project targets a CPU-first local workflow. The CLI installs the CPU
+background-removal stack by default. Desktop GUI dependencies are optional so
+headless CLI and test environments do not need Qt.
 
 ## Local Environment
 
@@ -38,6 +40,36 @@ PYTHONPATH=src python3 -m background_remover.cli --help
 ```
 
 Do not create the virtual environment with `sudo`. The `.venv` directory should be owned by your normal user so later dependency installs do not create root-owned project files.
+
+## GUI Setup
+
+Phase 0 establishes the GUI command and technical direction. The first supported
+drag-out save target is Windows File Explorer. Linux file managers and macOS
+Finder remain validation targets after the Windows path works, with Save As kept
+as the reliable fallback on every platform.
+
+The selected GUI toolkit is `PySide6`. The first delivery target is a
+developer-run Python app installed from this repository; packaged executables
+are deferred to the release phase.
+
+Install the GUI extras into the same virtual environment:
+
+```bash
+python3 -m pip install -e ".[dev,gui]"
+```
+
+Launch the GUI:
+
+```bash
+background-remover-gui
+```
+
+Without installing the console script, the entry point can be checked from the
+repository root:
+
+```bash
+PYTHONPATH=src python3 -m background_remover.gui --help
+```
 
 ## Generated Files
 

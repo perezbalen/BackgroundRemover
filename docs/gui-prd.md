@@ -28,7 +28,7 @@ the app practical for visual iteration:
   dragging a completed output into File Explorer or another file manager.
 - The original file should never be modified.
 
-The product should correct the spelling in the UI and docs to `.`.
+The product should correct the spelling in the UI and docs to `.aseprite`.
 
 ## Goals
 

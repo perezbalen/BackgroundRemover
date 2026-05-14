@@ -22,9 +22,13 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.5"
 ]
+gui = [
+  "PySide6>=6.7"
+]
 
 [project.scripts]
 background-remover = "background_remover.cli:main"
+background-remover-gui = "background_remover.gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

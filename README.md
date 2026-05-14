@@ -28,6 +28,9 @@ models reviewed in `bgbye`, such as `bria-rmbg`, `u2net`, and
 `u2net_human_seg`. Larger BiRefNet models may be slow on CPU, so benchmark a
 small subset before processing a full animation.
 
+The CLI default model is `bria-rmbg`; pass `--model` when you want a different
+quality/performance tradeoff.
+
 Inspect an Aseprite file without processing:
 
 ```bash
@@ -107,7 +110,7 @@ Use `--model-cache-dir` on processing commands to choose a different cache.
 
 ### General flags
 
-- `--model MODEL`: chooses the `rembg` model. The default is `isnet-anime`.
+- `--model MODEL`: chooses the `rembg` model. The default is `bria-rmbg`.
   Larger models can improve masks, but they can be much slower on CPU. Use
   `background-remover --list-models` to see valid names.
 - `--model-cache-dir PATH`: stores downloaded model files in `PATH`. The
