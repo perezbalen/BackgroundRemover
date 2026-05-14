@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
+from typing import Any
 
 from background_remover.background import SUPPORTED_MODELS
 from background_remover.gui.input_loader import (
@@ -26,8 +27,17 @@ from background_remover.gui.theme import MOCHA
 from background_remover.gui.worker import ProcessingWorker
 from background_remover.mask_cleanup import MaskCleanupOptions
 
-from PySide6.QtCore import QThread, QSize, Qt, QSettings, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QDragEnterEvent, QDropEvent, QImage, QPainter, QPixmap
+from PySide6.QtCore import QThread, QSize, Qt, QSettings, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDropEvent,
+    QImage,
+    QPainter,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -41,6 +51,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
@@ -70,6 +82,8 @@ class MainWindow(QMainWindow):
         self.processing_started_at = 0.0
         self.completed_frame_seconds: list[float] = []
         self.last_successful_output_path: Path | None = None
+        self.last_processing_result: Any | None = None
+        self.output_view_paths: dict[str, Path] = {}
 
         self.setWindowTitle("Aseprite Background Remover")
         self.resize(1180, 760)
@@ -172,6 +186,10 @@ class MainWindow(QMainWindow):
         output_title = QLabel("Output")
         input_title.setObjectName("previewTitle")
         output_title.setObjectName("previewTitle")
+        self.output_view_select = QComboBox()
+        self.output_view_select.addItem("Result", "result")
+        self.output_view_select.setEnabled(False)
+        self.output_view_select.currentIndexChanged.connect(self._load_selected_output_view)
 
         self.input_preview = PreviewPane("Drop or open an input file")
         self.output_preview = PreviewPane("Output appears after processing")
@@ -180,6 +198,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(input_title, 0, 0)
         layout.addWidget(output_title, 0, 1)
+        layout.addWidget(self.output_view_select, 0, 1, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self.input_preview, 1, 0)
         layout.addWidget(self.output_preview, 1, 1)
         layout.setColumnStretch(0, 1)
@@ -393,13 +412,38 @@ class MainWindow(QMainWindow):
         top_row.addWidget(self.status_label)
         top_row.addWidget(self.progress_bar, stretch=1)
 
-        self.warnings_panel = QPlainTextEdit()
-        self.warnings_panel.setReadOnly(True)
-        self.warnings_panel.setPlaceholderText("Warnings and generated artifacts")
-        self.warnings_panel.setMaximumHeight(88)
+        review_row = QHBoxLayout()
+
+        warning_column = QVBoxLayout()
+        self.report_summary_label = QLabel("No processing report")
+        self.report_summary_label.setWordWrap(True)
+        self.warnings_panel = QListWidget()
+        self.warnings_panel.setMaximumHeight(112)
+        self.warnings_panel.itemActivated.connect(self._activate_warning_item)
+        self.warnings_panel.itemClicked.connect(self._activate_warning_item)
+        warning_column.addWidget(self.report_summary_label)
+        warning_column.addWidget(self.warnings_panel)
+
+        artifact_column = QVBoxLayout()
+        artifact_header = QHBoxLayout()
+        artifact_header.addWidget(QLabel("Generated Artifacts"))
+        artifact_header.addStretch(1)
+        self.reveal_artifact_button = QPushButton("Reveal")
+        self.reveal_artifact_button.setEnabled(False)
+        self.reveal_artifact_button.clicked.connect(self._reveal_selected_artifact)
+        artifact_header.addWidget(self.reveal_artifact_button)
+        self.artifacts_panel = QListWidget()
+        self.artifacts_panel.setMaximumHeight(112)
+        self.artifacts_panel.currentItemChanged.connect(self._update_reveal_button)
+        self.artifacts_panel.itemActivated.connect(lambda item: self._reveal_artifact_item(item))
+        artifact_column.addLayout(artifact_header)
+        artifact_column.addWidget(self.artifacts_panel)
+
+        review_row.addLayout(warning_column, stretch=3)
+        review_row.addLayout(artifact_column, stretch=2)
 
         layout.addLayout(top_row)
-        layout.addWidget(self.warnings_panel)
+        layout.addLayout(review_row)
         return panel
 
     def _create_status_bar(self) -> None:
@@ -570,13 +614,17 @@ class MainWindow(QMainWindow):
         if skipped:
             skipped_names = ", ".join(path.name for path in skipped)
             warnings.append(f"Skipped dropped files: {skipped_names}")
-        self.warnings_panel.setPlainText("\n".join(warnings))
+        self._set_warning_messages(warnings)
+        self.report_summary_label.setText("Input loaded")
+        self.artifacts_panel.clear()
+        self.reveal_artifact_button.setEnabled(False)
         self._update_command_preview()
 
     def _show_error(self, message: str) -> None:
         self.status_label.setText("Error")
         self.statusBar().showMessage(message)
-        self.warnings_panel.setPlainText(message)
+        self.report_summary_label.setText("Error")
+        self._set_warning_messages([message])
         self.input_preview.set_message(message)
 
     def validate_settings(self) -> None:
@@ -586,7 +634,8 @@ class MainWindow(QMainWindow):
             self._show_validation_error(str(error))
             return
         command = self._command_preview_for(options)
-        self.warnings_panel.setPlainText(f"Settings valid.\n{command}")
+        self.report_summary_label.setText("Settings valid")
+        self._set_warning_messages([command])
         self.status_label.setText("Valid")
         self.statusBar().showMessage("Settings are valid")
 
@@ -680,27 +729,23 @@ class MainWindow(QMainWindow):
         self._set_processing_state(False)
         self.status_label.setText("Complete")
         self.statusBar().showMessage(f"Wrote {output_path}")
-        warnings = []
-        if hasattr(result, "warnings"):
-            warnings.extend(warning["message"] for warning in result.warnings)
-        warnings.append(f"Wrote {output_path}")
-        warnings.append(f"Processing time: {result.timings.processing_seconds:.2f}s")
-        if result.timings.average_frame_seconds:
-            warnings.append(f"Average frame time: {result.timings.average_frame_seconds:.2f}s")
-        self.warnings_panel.setPlainText("\n".join(warnings))
-        self._load_output_preview(output_path)
+        self.last_processing_result = result
+        self._populate_review_tools(result)
+        self._populate_output_view_modes(result)
+        self._load_selected_output_view()
 
     def _handle_processing_failed(self, message: str) -> None:
         self._set_processing_state(False)
         self.status_label.setText("Error")
         self.statusBar().showMessage(message)
-        self.warnings_panel.setPlainText(message)
+        self.report_summary_label.setText("Processing failed")
+        self._set_warning_messages([message])
 
     def _load_output_preview(self, output_path: Path) -> None:
         try:
             loaded = load_input(output_path)
         except Exception as error:
-            self.warnings_panel.appendPlainText(f"Could not load output preview: {error}")
+            self._set_warning_messages([f"Could not load output preview: {error}"])
             return
         self.output_preview.setEnabled(True)
         self.output_preview.set_frames(loaded.frames)
@@ -723,6 +768,100 @@ class MainWindow(QMainWindow):
     def _sync_output_frame(self, index: int) -> None:
         if len(self.input_preview.frames) == len(self.output_preview.frames):
             self.output_preview.set_frame_index(index)
+
+    def _set_warning_messages(self, messages: list[str]) -> None:
+        self.warnings_panel.clear()
+        for message in messages:
+            if not message:
+                continue
+            self.warnings_panel.addItem(message)
+
+    def _populate_review_tools(self, result: Any) -> None:
+        warnings = list(getattr(result, "warnings", []))
+        self.warnings_panel.clear()
+        if warnings:
+            for warning in warnings:
+                item = QListWidgetItem(_format_report_warning(warning))
+                item.setData(Qt.ItemDataRole.UserRole, warning.get("frame_index"))
+                self.warnings_panel.addItem(item)
+        else:
+            self.warnings_panel.addItem("No report warnings.")
+
+        artifact_lines = _artifact_items(result.artifacts)
+        self.artifacts_panel.clear()
+        for label, path in artifact_lines:
+            item = QListWidgetItem(f"{label}: {path}")
+            item.setData(Qt.ItemDataRole.UserRole, str(path))
+            self.artifacts_panel.addItem(item)
+        self.reveal_artifact_button.setEnabled(bool(artifact_lines))
+
+        self.report_summary_label.setText(_format_output_summary(result, self.loaded_input))
+
+    def _populate_output_view_modes(self, result: Any) -> None:
+        artifacts = result.artifacts
+        self.output_view_paths = {"result": artifacts.output_path}
+        self.output_view_select.blockSignals(True)
+        self.output_view_select.clear()
+        self.output_view_select.addItem("Result", "result")
+
+        mode_specs = [
+            ("final_mask", "Final Mask", artifacts.mask_output_dir or artifacts.mask_output_path),
+            ("ai_mask", "AI Mask", artifacts.ai_mask_output_dir),
+            ("color_key_mask", "Color-Key Mask", artifacts.color_key_mask_output_dir),
+            ("contact_sheet", "Contact Sheet", artifacts.contact_sheet_output_path),
+        ]
+        for key, label, path in mode_specs:
+            if path and _preview_path_available(path):
+                self.output_view_paths[key] = path
+                self.output_view_select.addItem(label, key)
+
+        self.output_view_select.setEnabled(True)
+        self.output_view_select.setCurrentIndex(0)
+        self.output_view_select.blockSignals(False)
+
+    def _load_selected_output_view(self, *_args) -> None:
+        key = self.output_view_select.currentData()
+        path = self.output_view_paths.get(str(key))
+        if path is None:
+            return
+        if path.is_dir():
+            durations = self.loaded_input.metadata.durations_ms if self.loaded_input else []
+            frames = _load_png_sequence_preview(path, durations)
+            if not frames:
+                self.output_preview.set_message(f"No PNG frames found in {path}")
+                return
+            self.output_preview.setEnabled(True)
+            self.output_preview.set_frames(frames)
+            self._sync_output_to_input()
+            return
+        self._load_output_preview(path)
+
+    def _activate_warning_item(self, item: QListWidgetItem) -> None:
+        frame_index = item.data(Qt.ItemDataRole.UserRole)
+        if frame_index is None:
+            return
+        try:
+            index = int(frame_index)
+        except (TypeError, ValueError):
+            return
+        self.input_preview.set_frame_index(index)
+        self.output_preview.set_frame_index(index)
+
+    def _update_reveal_button(self, current: QListWidgetItem | None) -> None:
+        self.reveal_artifact_button.setEnabled(current is not None)
+
+    def _reveal_selected_artifact(self) -> None:
+        item = self.artifacts_panel.currentItem()
+        if item is not None:
+            self._reveal_artifact_item(item)
+
+    def _reveal_artifact_item(self, item: QListWidgetItem) -> None:
+        path_text = item.data(Qt.ItemDataRole.UserRole)
+        if not path_text:
+            return
+        path = Path(str(path_text))
+        target = path if path.is_dir() else path.parent
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.resolve())))
 
     def _collect_processing_request(self) -> tuple[Path, GuiProcessingOptions]:
         if self.loaded_input is None:
@@ -825,7 +964,8 @@ class MainWindow(QMainWindow):
     def _show_validation_error(self, message: str) -> None:
         self.status_label.setText("Invalid settings")
         self.statusBar().showMessage(message)
-        self.warnings_panel.setPlainText(message)
+        self.report_summary_label.setText("Invalid settings")
+        self._set_warning_messages([message])
 
     def _fill_suggested_artifact_paths(self, input_path: Path) -> None:
         output_dir = input_path.parent / f"{input_path.stem}.artifacts"
@@ -861,6 +1001,10 @@ class MainWindow(QMainWindow):
         self.color_key_tolerance.setEnabled(not processing)
         self.color_key_protect_alpha.setEnabled(not processing)
         self.overwrite_output.setEnabled(not processing)
+        self.output_view_select.setEnabled(not processing and bool(self.output_view_paths))
+        self.reveal_artifact_button.setEnabled(
+            not processing and self.artifacts_panel.currentItem() is not None
+        )
 
     def _clear_worker_refs(self) -> None:
         self.processing_thread = None
@@ -1090,6 +1234,78 @@ def _format_metadata(loaded: LoadedInput) -> str:
         parts.append(f"Layers: {metadata.layer_count}")
         parts.append(f"Tags: {', '.join(metadata.tags) if metadata.tags else 'none'}")
     return "\n".join(parts)
+
+
+def _format_output_summary(result: Any, loaded_input: LoadedInput | None) -> str:
+    warning_count = len(getattr(result, "warnings", []))
+    parts = [f"Report warnings: {warning_count}"]
+    if hasattr(result, "width") and hasattr(result, "height") and hasattr(result, "frame_count"):
+        parts.append(f"Output: {result.width}x{result.height}, {result.frame_count} frames")
+    elif loaded_input is not None:
+        metadata = loaded_input.metadata
+        parts.append(f"Output: {metadata.width}x{metadata.height}, 1 frame")
+    parts.append(f"Model: {result.model_name}")
+    parts.append(f"Cleanup: {result.cleanup_description}")
+    if hasattr(result, "color_key_description"):
+        parts.append(f"Color key: {result.color_key_description}")
+    if hasattr(result, "layer_policy"):
+        parts.append(f"Layer policy: {result.layer_policy}")
+    if hasattr(result, "metadata_policy"):
+        policy = "; ".join(f"{key}: {value}" for key, value in result.metadata_policy.items())
+        parts.append(f"Metadata: {policy}")
+    parts.append(f"Processing time: {result.timings.processing_seconds:.2f}s")
+    if result.timings.average_frame_seconds:
+        parts.append(f"Average frame: {result.timings.average_frame_seconds:.2f}s")
+    return "\n".join(parts)
+
+
+def _format_report_warning(warning: dict[str, Any]) -> str:
+    frame = warning.get("frame_index", "?")
+    warning_type = str(warning.get("warning_type", "warning")).replace("_", " ")
+    message = warning.get("message", "")
+    return f"Frame {frame}: {warning_type} - {message}"
+
+
+def _artifact_items(artifacts: Any) -> list[tuple[str, Path]]:
+    specs = [
+        ("Output", artifacts.output_path),
+        ("Still mask", artifacts.mask_output_path),
+        ("Processed frames", artifacts.frame_output_dir),
+        ("Final masks", artifacts.mask_output_dir),
+        ("AI masks", artifacts.ai_mask_output_dir),
+        ("Color-key masks", artifacts.color_key_mask_output_dir),
+        ("JSON report", artifacts.report_output_path),
+        ("Contact sheet", artifacts.contact_sheet_output_path),
+        ("GIF preview", artifacts.preview_output_path),
+    ]
+    return [(label, path) for label, path in specs if path is not None]
+
+
+def _preview_path_available(path: Path) -> bool:
+    if path.is_dir():
+        return any(path.glob("*.png"))
+    return path.exists()
+
+
+def _load_png_sequence_preview(directory: Path, durations_ms: list[int] | None = None) -> list[PreviewFrame]:
+    from PIL import Image
+
+    frames: list[PreviewFrame] = []
+    paths = sorted(directory.glob("*.png"))
+    durations = durations_ms or []
+    for index, path in enumerate(paths):
+        with Image.open(path) as image:
+            rgba = image.convert("RGBA")
+            duration_ms = durations[index] if index < len(durations) else 100
+            frames.append(
+                PreviewFrame(
+                    width=rgba.width,
+                    height=rgba.height,
+                    rgba=rgba.tobytes(),
+                    duration_ms=duration_ms,
+                )
+            )
+    return frames
 
 
 def _updated_recent_folders(existing: list[Path], folder: Path) -> list[Path]:

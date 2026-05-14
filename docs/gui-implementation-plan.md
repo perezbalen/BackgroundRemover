@@ -139,16 +139,16 @@ Phase 0 decisions:
 
 ## Phase 6: Reports, Artifacts, And Review Tools
 
-- [ ] Show report warning count after processing.
-- [ ] Show mask area jump warnings in the GUI.
-- [ ] Show bounding-box jump warnings in the GUI.
-- [ ] Let users click a frame warning to jump the preview to that frame.
-- [ ] Show flattened layer policy in the report panel.
-- [ ] Show generated artifact paths after processing.
-- [ ] Add buttons to reveal generated artifacts in the file manager.
-- [ ] Add output view modes: result, final mask, AI mask, color-key mask, and
+- [x] Show report warning count after processing.
+- [x] Show mask area jump warnings in the GUI.
+- [x] Show bounding-box jump warnings in the GUI.
+- [x] Let users click a frame warning to jump the preview to that frame.
+- [x] Show flattened layer policy in the report panel.
+- [x] Show generated artifact paths after processing.
+- [x] Add buttons to reveal generated artifacts in the file manager.
+- [x] Add output view modes: result, final mask, AI mask, color-key mask, and
   contact sheet when available.
-- [ ] Add a metadata summary for the generated output.
+- [x] Add a metadata summary for the generated output.
 
 ## Phase 7: Save And Drag-Out Export
 

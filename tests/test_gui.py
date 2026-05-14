@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from PIL import Image
 import pytest
@@ -163,3 +164,42 @@ def test_load_aseprite_input_returns_metadata_and_flattened_frames() -> None:
     assert len(loaded.frames) == loaded.metadata.frame_count
     assert loaded.frames[0].duration_ms == loaded.metadata.durations_ms[0]
     assert loaded.metadata.warnings
+
+
+def test_gui_report_warning_format_mentions_warning_type_and_frame() -> None:
+    from background_remover.gui.main_window import _format_report_warning
+
+    text = _format_report_warning(
+        {
+            "frame_index": 3,
+            "warning_type": "mask_area_jump",
+            "message": "Frame 3 mask area changed by 40.0% from the previous frame",
+        }
+    )
+
+    assert text.startswith("Frame 3: mask area jump")
+    assert "40.0%" in text
+
+
+def test_gui_artifact_items_include_only_generated_paths() -> None:
+    from background_remover.gui.main_window import _artifact_items
+
+    items = _artifact_items(
+        SimpleNamespace(
+            output_path=Path("out.aseprite"),
+            mask_output_path=None,
+            frame_output_dir=Path("frames"),
+            mask_output_dir=None,
+            ai_mask_output_dir=None,
+            color_key_mask_output_dir=None,
+            report_output_path=Path("report.json"),
+            contact_sheet_output_path=None,
+            preview_output_path=None,
+        )
+    )
+
+    assert items == [
+        ("Output", Path("out.aseprite")),
+        ("Processed frames", Path("frames")),
+        ("JSON report", Path("report.json")),
+    ]
