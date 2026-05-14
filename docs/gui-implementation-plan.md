@@ -59,16 +59,16 @@ Phase 0 decisions:
 
 ## Phase 2: GUI App Scaffold
 
-- [ ] Create a GUI package, for example `src/background_remover/gui/`.
-- [ ] Add the GUI application entry point.
-- [ ] Create the main window shell.
-- [ ] Add top toolbar actions: Open, Process, Cancel, Save As, and About.
-- [ ] Add a two-pane preview area for Input and Output.
-- [ ] Add the right settings panel container.
-- [ ] Add the bottom status, progress, and warnings panel.
-- [ ] Add persistent app settings for recent folders, model choice, and cache
+- [x] Create a GUI package, for example `src/background_remover/gui/`.
+- [x] Add the GUI application entry point.
+- [x] Create the main window shell.
+- [x] Add top toolbar actions: Open, Process, Cancel, Save As, and About.
+- [x] Add a two-pane preview area for Input and Output.
+- [x] Add the right settings panel container.
+- [x] Add the bottom status, progress, and warnings panel.
+- [x] Add persistent app settings for recent folders, model choice, and cache
   directory.
-- [ ] Add a minimal smoke test that imports or launches the GUI entry point
+- [x] Add a minimal smoke test that imports or launches the GUI entry point
   without starting a full processing run.
 
 ## Phase 3: Input Loading And Preview

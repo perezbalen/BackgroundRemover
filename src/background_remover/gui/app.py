@@ -1,8 +1,4 @@
-"""Minimal PySide6 GUI launcher.
-
-Phase 0 only establishes the dependency and command boundary. The full window,
-preview, settings, and worker implementation are tracked in later GUI phases.
-"""
+"""PySide6 GUI launcher."""
 
 from __future__ import annotations
 
@@ -31,8 +27,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.parse_args(argv)
 
     try:
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication, QLabel, QMainWindow
+        from PySide6.QtWidgets import QApplication
     except ImportError as error:
         parser.exit(
             1,
@@ -41,14 +36,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         raise AssertionError("unreachable") from error
 
+    from background_remover.gui.main_window import MainWindow
+
     app = QApplication(sys.argv[:1])
-    window = QMainWindow()
-    window.setWindowTitle("Aseprite Background Remover")
-    window.resize(960, 640)
-
-    placeholder = QLabel("Aseprite Background Remover GUI")
-    placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    window.setCentralWidget(placeholder)
-
+    app.setOrganizationName("perezbalen")
+    app.setApplicationName("Aseprite Background Remover")
+    window = MainWindow()
     window.show()
     return app.exec()
